@@ -34,6 +34,29 @@
   const productById = id => state.products.find(product => product.id === id);
   const currentTier = () => [...state.tiers].sort((a, b) => a.points - b.points).filter(t => Number(state.user?.points ?? state.points) >= t.points).at(-1) || state.tiers[0];
   const percentOff = discount => Math.max(0, 100 - Number(discount || 100));
+  const cents = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+  const addressText = address => [address?.province, address?.city, address?.district, address?.detail].filter(Boolean).join("");
+  const selectedAddress = source => source.selectedAddress || source.addresses?.find(item => item.isDefault) || source.addresses?.[0];
+
+  function cartPricing(rows, couponId = "") {
+    const subtotal = cents(rows.reduce((sum, { item, sku }) => sum + Number(sku.price) * Number(item.qty), 0));
+    const tier = currentTier();
+    const memberRate = Number(tier?.discount || 100) / 100;
+    const memberDiscount = cents(subtotal * (1 - memberRate));
+    const claim = state.claimedCoupons?.find(item => (item.claimId || item.id) === couponId && item.status === "available");
+    const coupon = claim && state.coupons?.find(item => item.id === (claim.couponId || claim.id));
+    let couponDiscount = 0;
+    const couponValue = Number(coupon?.value);
+    if (coupon && subtotal >= Number(coupon.threshold || 0) && Number.isFinite(couponValue) && couponValue > 0
+      && (coupon.type !== "rate" || couponValue <= 100)) {
+      couponDiscount = coupon.type === "rate"
+        ? cents(subtotal * memberRate * (1 - couponValue / 100))
+        : cents(couponValue);
+    }
+    const discount = Math.min(subtotal, memberDiscount + couponDiscount);
+    const shippingFee = !rows.length || subtotal - discount >= Number(state.settings?.freeShippingThreshold || 99) ? 0 : 8;
+    return { subtotal, memberDiscount, couponDiscount, discount, shippingFee, total: cents(Math.max(0, subtotal - discount + shippingFee)), coupon };
+  }
 
   function productTags(product) {
     return (product.tags || []).map(tag => `<span class="tag ${tag}">${tagNames[tag] || esc(tag)}</span>`).join("");
@@ -227,7 +250,7 @@
             <tr><td>专属礼遇</td>${tiers.map((tier, i) => `<td class="${tier.id === current.id ? "current-col" : ""}">${i < 2 ? "—" : i === 2 ? "月礼券" : "新品优先"}</td>`).join("")}</tr></tbody>
           </table></div>
         </section>
-        <section class="section white-card"><a class="list-link" href="#points" data-action="points"><strong>积分明细</strong><span>查看获取与使用记录 ${icon("chevron")}</span></a>
+        <section class="section white-card"><a class="list-link" href="mini-points.html"><strong>积分明细</strong><span>查看获取与使用记录 ${icon("chevron")}</span></a>
           <div class="list-link"><span>积分有效期</span><span>积分自获得之日起 12 个月有效</span></div></section>
         <div class="mini-notice">会员等级与折扣由商城运营后台配置</div>
       </div>`
@@ -242,13 +265,21 @@
       return { item, product, sku };
     }).filter(entry => entry.product && entry.sku);
     const selected = rows.filter(({ item }) => item.selected);
-    const total = selected.reduce((sum, { item, sku }) => sum + Number(sku.price) * item.qty, 0);
+    const subtotal = selected.reduce((sum, { item, sku }) => sum + Number(sku.price) * item.qty, 0);
+    const availableCoupons = (state.claimedCoupons || []).filter(claim => {
+      const coupon = state.coupons?.find(entry => entry.id === (claim.couponId || claim.id));
+      return claim.status === "available" && coupon && subtotal >= Number(coupon.threshold || 0);
+    });
+    if (!availableCoupons.some(item => (item.claimId || item.id) === state.selectedCartCouponId)) state.selectedCartCouponId = "";
+    const pricing = cartPricing(selected, state.selectedCartCouponId);
     const allSelected = rows.length > 0 && selected.length === rows.length;
-    let edit = false;
     const cartRows = rows.map(({ item, product, sku }) => `<div class="cart-row">
       <input class="check" type="checkbox" data-action="cart-select" data-id="${esc(product.id)}" data-sku-id="${esc(sku.id)}" ${item.selected ? "checked" : ""} aria-label="选择${esc(product.name)}">
       <div class="cart-thumb"><img src="${sku.image || product.image}" alt="${esc(product.name)}"></div>
-      <div class="cart-info"><div class="cart-name">${esc(product.name)}</div><div class="cart-spec">${esc(sku.label || product.subtitle || "标准版")}</div>
+      <div class="cart-info"><div class="cart-name">${esc(product.name)}</div>
+        ${product.skus?.length > 1 ? `<label class="cart-sku-picker"><span class="sr-only">选择商品规格</span><select data-action="cart-sku" data-id="${esc(product.id)}" data-sku-id="${esc(sku.id)}" aria-label="选择${esc(product.name)}规格">
+          ${product.skus.filter(option => option.status === "on").map(option => `<option value="${esc(option.id)}" ${option.id === sku.id ? "selected" : ""} ${Number(option.stock) <= 0 ? "disabled" : ""}>${esc(option.label || option.specs?.map(spec => spec.value).join(" / ") || "标准版")} · ${money(option.price)}${Number(option.stock) <= 0 ? "（缺货）" : ""}</option>`).join("")}
+        </select></label>` : `<div class="cart-spec">${esc(sku.label || product.subtitle || "标准版")}</div>`}
         <div class="cart-bottom"><strong class="price" style="font-size:13px">${money(sku.price)}</strong>
           <div style="display:flex;align-items:center;gap:7px"><button type="button" class="text-action danger cart-remove" data-action="cart-remove" data-id="${esc(product.id)}" data-sku-id="${esc(sku.id)}" style="display:none">删除</button>
           <div class="stepper"><button type="button" data-action="cart-qty" data-id="${esc(product.id)}" data-sku-id="${esc(sku.id)}" data-delta="-1">−</button><output>${item.qty}</output><button type="button" data-action="cart-qty" data-id="${esc(product.id)}" data-sku-id="${esc(sku.id)}" data-delta="1">＋</button></div></div>
@@ -258,17 +289,63 @@
       active: "cart",
       header: `<div class="mini-head-row"><span class="mini-title">购物车</span><button class="head-link" type="button" data-action="cart-edit" style="border:0;background:none;padding:6px">${rows.length ? "编辑" : ""}</button></div>`,
       content: `<div class="mini-content" style="padding-top:2px">${rows.length ? `<div class="white-card" style="padding:0 13px">${cartRows}</div><div class="mini-notice">已选 ${selected.length} 件商品</div>` : empty}</div>`,
-      bottom: rows.length ? `<div class="checkoutbar">
-        <label class="checkout-label"><input class="check" type="checkbox" data-action="cart-select-all" ${allSelected ? "checked" : ""}> 全选</label>
-        <div class="checkout-total">合计<strong>${money(total)}</strong></div>
-        <button class="primary-btn" type="button" data-action="checkout">去结算${selected.length ? ` (${selected.length})` : ""}</button>
+      bottom: rows.length ? `<div class="cart-checkout">
+        <details class="cart-discount">
+          <summary><span>优惠明细</span><span>已优惠 ${money(pricing.discount)}　配送 ${pricing.shippingFee ? money(pricing.shippingFee) : "免运费"}</span></summary>
+          <div class="cart-discount-body">
+            <div><span>商品金额</span><span>${money(pricing.subtotal)}</span></div>
+            <div><span>${esc(currentTier()?.name || "会员")}折扣</span><span class="discount-value">−${money(pricing.memberDiscount)}</span></div>
+            <div class="cart-coupon-line"><label for="cart-coupon">优惠券</label><select id="cart-coupon" data-action="cart-coupon"><option value="">不使用优惠券</option>${availableCoupons.map(claim => {
+              const coupon = state.coupons.find(entry => entry.id === (claim.couponId || claim.id));
+              const claimId = claim.claimId || claim.id;
+              return `<option value="${esc(claimId)}" ${claimId === state.selectedCartCouponId ? "selected" : ""}>${esc(coupon.name)}（−${money(coupon.type === "rate" ? cents(pricing.subtotal * (Number(currentTier()?.discount || 100) / 100) * (1 - Number(coupon.value) / 100)) : coupon.value)}）</option>`;
+            }).join("")}</select><span class="discount-value">−${money(pricing.couponDiscount)}</span></div>
+            <div><span>配送费</span><span>${pricing.shippingFee ? money(pricing.shippingFee) : "免运费"}</span></div>
+          </div>
+        </details>
+        <div class="checkoutbar">
+          <label class="checkout-label"><input class="check" type="checkbox" data-action="cart-select-all" ${allSelected ? "checked" : ""}> 全选</label>
+          <div class="checkout-total">应付金额<strong>${money(pricing.total)}</strong></div>
+          <button class="primary-btn" type="button" data-action="checkout">去结算${selected.length ? ` (${selected.length})` : ""}</button>
+        </div>
       </div>` : ""
     });
+    let edit = false;
     root.querySelector('[data-action="cart-edit"]')?.addEventListener("click", event => {
       edit = !edit;
-      root.querySelector('[data-action="cart-edit"]').textContent = edit ? "完成" : "编辑";
+      event.currentTarget.textContent = edit ? "完成" : "编辑";
       root.querySelectorAll(".cart-remove").forEach(button => { button.style.display = edit ? "inline" : "none"; });
     });
+    if (params.get("checkout") === "1" && !root.dataset.checkoutOpened) {
+      root.dataset.checkoutOpened = "true";
+      window.setTimeout(openCheckoutModal, 0);
+    }
+  }
+
+  function openCheckoutModal() {
+    state = read();
+    const selected = state.cart.filter(item => item.selected);
+    if (!selected.length) return toast("请先选择商品");
+    const lines = selected.map(item => {
+      const product = productById(item.productId);
+      return { item, product, sku: product?.skus?.find(row => row.id === item.skuId) || product?.skus?.[0] };
+    }).filter(row => row.product && row.sku);
+    const pricing = cartPricing(lines, state.selectedCartCouponId || "");
+    const address = selectedAddress(state);
+    const coupon = state.selectedCartCouponId || "";
+    const text = addressText(address);
+    openModal("确认订单", `<div style="font-size:11px;color:#777;line-height:1.8">已选择 ${selected.length} 件商品 · 优惠及运费与订单规则一致</div>
+      <div class="checkout-address-card"><div><strong>${esc(address?.name || "尚未选择收货地址")}</strong><span>${esc(address?.phone || "")}</span></div><p>${esc(text || "请先添加或选择收货地址")}</p><a href="mini-addresses.html?return=checkout">选择地址</a></div>
+      <div class="form-grid" style="margin-top:14px">
+        <label class="field" style="grid-column:1/-1">使用优惠券<select id="checkout-coupon" data-action="checkout-coupon"><option value="">不使用优惠券</option>${(state.claimedCoupons || []).filter(item => item.status === "available").map(item => {
+          const couponData = state.coupons.find(entry => entry.id === (item.couponId || item.id));
+          const claimId = item.claimId || item.id;
+          return couponData && pricing.subtotal >= Number(couponData.threshold || 0) ? `<option value="${esc(claimId)}" ${claimId === coupon ? "selected" : ""}>${esc(couponData.name)}</option>` : "";
+        }).join("")}</select></label>
+        <label class="field" style="grid-column:1/-1">订单备注<textarea id="checkout-remark" rows="2" placeholder="选填"></textarea></label>
+      </div><div class="checkout-modal-total">预估应付 <strong>${money(pricing.total)}</strong>（含配送费）</div>
+      <div class="inline-help" style="margin-top:10px">创建后可在「我的订单」模拟支付；运营后台可继续发货、审核售后。</div>`,
+      `<button class="secondary-btn" type="button" data-modal-close>再想想</button><button class="primary-btn small" type="button" data-action="confirm-order">提交订单</button>`);
   }
 
   function renderProfile() {
@@ -290,9 +367,117 @@
           </div>
         </section>
         <section class="section white-card" style="padding:2px 13px">
-          ${[["营销中心","gift","mini-promotions.html"],["我的优惠券","tag","mini-coupons.html"],["分销中心","chart","mini-distribution.html"],["收货地址","homeGoods","#address"],["积分","member","#points"],["客服","service","#service"],["设置","settings","#settings"]].map(([label, glyph, href]) => `<a href="${href}" ${href.startsWith("#") ? `data-action="profile-item" data-title="${label}"` : ""} class="list-link"><span style="display:flex;align-items:center;gap:9px">${icon(glyph)}<strong style="font-weight:550">${label}</strong></span><span>${icon("chevron")}</span></a>`).join("")}
+          ${[["营销中心","gift","mini-promotions.html"],["我的优惠券","tag","mini-coupons.html"],["分销中心","chart","mini-distribution.html"],["收货地址","homeGoods","mini-addresses.html"],["积分","member","mini-points.html"],["客服","service","#service"],["设置","settings","#settings"]].map(([label, glyph, href]) => `<a href="${href}" ${href.startsWith("#") ? `data-action="profile-item" data-title="${label}"` : ""} class="list-link"><span style="display:flex;align-items:center;gap:9px">${icon(glyph)}<strong style="font-weight:550">${label}</strong></span><span>${icon("chevron")}</span></a>`).join("")}
         </section>
         <div class="mini-notice">Mi Store · 认真生活，好好购物</div>
+      </div>`
+    });
+  }
+
+  function addressReturnUrl() {
+    const target = params.get("return");
+    if (target === "product") {
+      const productQuery = new URLSearchParams({ id: params.get("id") || "" });
+      if (params.get("sku")) productQuery.set("sku", params.get("sku"));
+      return `mini-product.html?${productQuery}`;
+    }
+    if (target === "checkout") return "mini-cart.html?checkout=1";
+    if (target === "cart") return "mini-cart.html";
+    return "mini-profile.html";
+  }
+
+  function renderAddresses() {
+    state = read();
+    state.addresses = state.addresses || [];
+    const returnTarget = params.get("return") || "";
+    const activeAddress = selectedAddress(state);
+    const addressCards = state.addresses.map(address => {
+      const active = activeAddress?.id === address.id;
+      return `<article class="address-card ${active ? "selected" : ""}">
+        <button class="address-card-main" type="button" data-action="address-select" data-id="${esc(address.id)}">
+          <span class="address-check">${active ? "✓" : ""}</span><span class="address-card-copy">
+            <span class="address-recipient"><strong>${esc(address.name)}</strong><span>${esc(address.phone)}</span>${address.isDefault ? `<em>默认</em>` : ""}</span>
+            <span class="address-full">${esc(addressText(address))}</span>
+          </span>
+        </button>
+        <div class="address-card-actions">
+          <button type="button" data-action="address-default" data-id="${esc(address.id)}">${address.isDefault ? "默认地址" : "设为默认"}</button>
+          <button type="button" data-action="address-edit" data-id="${esc(address.id)}">编辑</button>
+          <button type="button" data-action="address-delete" data-id="${esc(address.id)}">删除</button>
+          ${returnTarget ? `<button type="button" class="address-use" data-action="address-use" data-id="${esc(address.id)}">使用此地址</button>` : ""}
+        </div>
+      </article>`;
+    }).join("");
+    miniShell({
+      active: "profile",
+      header: `<div class="mini-head-row"><a class="head-link" href="${esc(addressReturnUrl())}" aria-label="返回">${icon("chevron")}</a><span class="mini-title">收货地址</span><button class="head-link" type="button" data-action="address-add">新增</button></div>`,
+      content: `<div class="mini-content address-page">
+        <div class="address-page-intro"><strong>我的收货地址</strong><span>${state.addresses.length} 个地址</span></div>
+        ${addressCards || `<div class="empty-state address-empty"><strong>还没有收货地址</strong><p>添加地址后可用于商品配送和订单结算</p></div>`}
+        <button class="address-add-button" type="button" data-action="address-add">＋ 新增收货地址</button>
+        <p class="mini-notice">地址仅保存在当前浏览器，用于本原型的本地配送演示。</p>
+      </div>`
+    });
+  }
+
+  function openAddressForm(address = {}) {
+    const backdrop = openModal(address.id ? "编辑收货地址" : "新增收货地址", `<form id="address-form">
+      <div class="form-grid">
+        <label class="field">收货人<input name="name" required maxlength="30" value="${esc(address.name || state.user.name || "")}"></label>
+        <label class="field">联系电话<input name="phone" required maxlength="20" value="${esc(address.phone || state.user.phone || "")}"></label>
+        <label class="field">省份<input name="province" required value="${esc(address.province || "")}" placeholder="例如：上海市"></label>
+        <label class="field">城市<input name="city" required value="${esc(address.city || "")}" placeholder="例如：上海市"></label>
+        <label class="field">区县<input name="district" required value="${esc(address.district || "")}" placeholder="例如：徐汇区"></label>
+        <label class="field" style="grid-column:1/-1">详细地址<input name="detail" required value="${esc(address.detail || "")}" placeholder="街道、门牌号等"></label>
+      </div>
+      <label class="address-default-choice"><input type="checkbox" name="isDefault" ${address.isDefault || !state.addresses.length ? "checked" : ""}> 设为默认收货地址</label>
+      <input type="hidden" name="id" value="${esc(address.id || "")}">
+    </form>`, `<button type="button" class="secondary-btn" data-modal-close>取消</button><button type="button" class="primary-btn small" data-action="address-save">保存</button>`);
+    backdrop.querySelector("[data-action='address-save']")?.addEventListener("click", () => {
+      const form = backdrop.querySelector("#address-form");
+      if (!form.reportValidity()) return;
+      const values = new FormData(form);
+      const id = String(values.get("id") || `ADDR-${Date.now()}`);
+      const addressData = {
+        id,
+        name: String(values.get("name")).trim(),
+        phone: String(values.get("phone")).trim(),
+        province: String(values.get("province")).trim(),
+        city: String(values.get("city")).trim(),
+        district: String(values.get("district")).trim(),
+        detail: String(values.get("detail")).trim(),
+        isDefault: values.get("isDefault") === "on"
+      };
+      if (addressData.isDefault || !state.addresses.length) state.addresses = state.addresses.map(item => ({ ...item, isDefault: false }));
+      const existingIndex = state.addresses.findIndex(item => item.id === id);
+      if (existingIndex >= 0) state.addresses[existingIndex] = addressData;
+      else state.addresses.unshift(addressData);
+      if (addressData.isDefault || state.selectedAddress?.id === id || !selectedAddress(state)) state.selectedAddress = addressData;
+      write(state);
+      closeModal();
+      renderAddresses();
+      toast("地址已保存");
+    });
+  }
+
+  function renderPoints() {
+    state = read();
+    const balance = Number(state.user?.points ?? state.points ?? 0);
+    const ledger = [
+      { title: "购物消费奖励", date: "2026-10-18", detail: "订单完成后发放", amount: 320 },
+      { title: "每日签到", date: "2026-10-17", detail: "连续签到奖励", amount: 10 },
+      { title: "积分兑换", date: "2026-10-16", detail: "兑换会员礼品", amount: -100 },
+      { title: "活动奖励", date: "2026-10-12", detail: "会员周末活动", amount: 240 }
+    ];
+    miniShell({
+      active: "profile",
+      header: `<div class="mini-head-row"><a class="head-link" href="mini-profile.html" aria-label="返回">${icon("chevron")}</a><span class="mini-title">积分明细</span><span></span></div>`,
+      content: `<div class="mini-content points-page">
+        <section class="points-balance-card"><span>当前可用积分</span><strong>${balance.toLocaleString()}</strong><small>积分可用于会员等级成长及商城权益</small></section>
+        <section class="points-ledger white-card"><div class="section-head"><h2>积分记录</h2><span>全部</span></div>
+          ${ledger.map(item => `<article class="points-ledger-row"><span class="points-ledger-icon">${item.amount > 0 ? "+" : "−"}</span><span class="points-ledger-copy"><strong>${esc(item.title)}</strong><small>${esc(item.date)} · ${esc(item.detail)}</small></span><strong class="${item.amount > 0 ? "points-positive" : "points-negative"}">${item.amount > 0 ? "+" : ""}${item.amount.toLocaleString()}</strong></article>`).join("")}
+        </section>
+        <p class="mini-notice">当前余额读取本地账户数据；下方积分记录为交互原型演示内容，不会改变积分余额。</p>
       </div>`
     });
   }
@@ -438,26 +623,9 @@
   }
 
   function chooseDeliveryAddress() {
-    const addresses = state.addresses || [];
-    const current = state.selectedAddress || addresses.find(item => item.isDefault) || addresses[0] || {};
-    const backdrop = openModal("配送地址", `<form id="detail-address-form"><div class="form-grid">
-      <label class="field" style="grid-column:1/-1">收货人<input name="name" required value="${esc(current.name || state.user.name || "")}"></label>
-      <label class="field" style="grid-column:1/-1">联系电话<input name="phone" required value="${esc(current.phone || state.user.phone || "")}"></label>
-      <label class="field" style="grid-column:1/-1">详细地址<input name="detail" required value="${esc([current.province, current.city, current.district, current.detail].filter(Boolean).join(""))}" placeholder="省市区、街道门牌号"></label>
-    </div><p class="inline-help" style="margin-top:12px">此原型仅保存本地演示地址，不会提交到真实物流服务。</p></form>`, `<button type="button" class="secondary-btn" data-modal-close>取消</button><button type="button" class="primary-btn small" data-action="save-detail-address">保存地址</button>`);
-    backdrop.querySelector("[data-action='save-detail-address']").addEventListener("click", () => {
-      const form = backdrop.querySelector("#detail-address-form");
-      if (!form.reportValidity()) return;
-      const values = new FormData(form);
-      const address = { id: current.id || `ADDR-${Date.now()}`, name: String(values.get("name")).trim(), phone: String(values.get("phone")).trim(), detail: String(values.get("detail")).trim(), isDefault: true };
-      state.addresses = (state.addresses || []).map(item => ({ ...item, isDefault: false }));
-      if (!state.addresses.some(item => item.id === address.id)) state.addresses.unshift(address);
-      else state.addresses = state.addresses.map(item => item.id === address.id ? address : item);
-      state.selectedAddress = address;
-      write(state);
-      closeModal();
-      renderProductDetail();
-    });
+    const query = new URLSearchParams({ return: "product", id: params.get("id") || "" });
+    if (detailSkuId) query.set("sku", detailSkuId);
+    location.href = `mini-addresses.html?${query}`;
   }
 
   function openProductShare() {
@@ -614,26 +782,39 @@
       state.cart.forEach(item => { item.selected = control.checked; });
       write(state);
       renderCart();
+    } else if (action === "cart-edit") {
+      return;
     } else if (action === "checkout") {
-      const count = state.cart.filter(item => item.selected).length;
-      if (!count) return toast("请先选择商品");
-      const latest = read();
-      const coupons = latest.claimedCoupons.filter(item => item.status === "available").map(item => {
-        const coupon = latest.coupons.find(entry => entry.id === (item.couponId || item.id));
-        return coupon ? `<option value="${esc(item.claimId || item.id)}">${esc(coupon.name)}</option>` : "";
-      }).join("");
-      openModal("确认订单", `<div style="font-size:11px;color:#777;line-height:1.8">已选择 ${count} 件商品 · 会员优惠将在提交时自动计算</div>
-        <div class="form-grid" style="margin-top:14px">
-          <label class="field" style="grid-column:1/-1">收货地址<input id="checkout-address" value="${esc(latest.user.name)}，${esc(latest.user.phone)}，上海市徐汇区漕溪北路 88 号"></label>
-          <label class="field" style="grid-column:1/-1">使用优惠券<select id="checkout-coupon"><option value="">不使用优惠券</option>${coupons}</select></label>
-          <label class="field" style="grid-column:1/-1">订单备注<textarea id="checkout-remark" rows="2" placeholder="选填"></textarea></label>
-        </div><div class="inline-help" style="margin-top:10px">创建后可在「我的订单」模拟支付；运营后台可继续发货、审核售后。</div>`,
-        `<button class="secondary-btn" type="button" data-modal-close>再想想</button><button class="primary-btn small" type="button" data-action="confirm-order">提交订单</button>`);
+      openCheckoutModal();
     } else if (action === "mock-order") {
       closeModal();
       toast("请选择商品后提交订单");
     } else if (action === "points") {
-      openModal("积分明细", `<div class="list-link"><span>购物消费奖励</span><span>+320</span></div><div class="list-link"><span>签到积分</span><span>+10</span></div><div class="list-link"><span>积分兑换</span><span>−100</span></div>`);
+      location.href = "mini-points.html";
+    } else if (action === "address-add") {
+      openAddressForm();
+    } else if (action === "address-edit") {
+      const address = state.addresses?.find(item => item.id === control.dataset.id);
+      if (address) openAddressForm(address);
+    } else if (action === "address-select" || action === "address-default" || action === "address-use") {
+      state = read();
+      const address = state.addresses?.find(item => item.id === control.dataset.id);
+      if (!address) return;
+      state.selectedAddress = address;
+      if (action === "address-default") state.addresses = state.addresses.map(item => ({ ...item, isDefault: item.id === address.id }));
+      write(state);
+      if (action === "address-use") location.href = addressReturnUrl();
+      else renderAddresses();
+    } else if (action === "address-delete") {
+      state = read();
+      const address = state.addresses?.find(item => item.id === control.dataset.id);
+      if (!address) return;
+      state.addresses = state.addresses.filter(item => item.id !== address.id);
+      if (state.selectedAddress?.id === address.id) state.selectedAddress = state.addresses.find(item => item.isDefault) || state.addresses[0] || null;
+      if (address.isDefault && state.addresses.length) state.addresses[0].isDefault = true;
+      write(state);
+      renderAddresses();
+      toast("地址已删除");
     } else if (action === "profile-item") {
       event.preventDefault();
       const title = control.dataset.title || "服务";
@@ -648,6 +829,58 @@
     }
   });
 
+  document.addEventListener("change", event => {
+    const control = event.target.closest("[data-action]");
+    if (!control) return;
+    if (control.dataset.action === "cart-sku") {
+      state = read();
+      const product = productById(control.dataset.id);
+      const sourceSkuId = control.dataset.skuId;
+      const targetSku = product?.skus?.find(item => item.id === control.value && item.status === "on");
+      const sourceIndex = state.cart.findIndex(item => item.productId === control.dataset.id
+        && (item.skuId || product?.skus?.[0]?.id) === sourceSkuId);
+      const source = state.cart[sourceIndex];
+      if (!source || !targetSku || Number(targetSku.stock) <= 0) {
+        toast("该规格暂不可售");
+        renderCart();
+        return;
+      }
+      const targetIndex = state.cart.findIndex((item, index) => index !== sourceIndex
+        && item.productId === control.dataset.id
+        && (item.skuId || product?.skus?.[0]?.id) === targetSku.id);
+      const target = targetIndex >= 0 ? state.cart[targetIndex] : null;
+      const nextQty = Number(source.qty) + Number(target?.qty || 0);
+      if (nextQty > Number(targetSku.stock)) {
+        toast(`目标规格库存不足，当前仅剩 ${Number(targetSku.stock)} 件`);
+        renderCart();
+        return;
+      }
+      if (target) {
+        target.qty = nextQty;
+        target.selected = Boolean(target.selected || source.selected);
+        state.cart.splice(sourceIndex, 1);
+      } else source.skuId = targetSku.id;
+      write(state);
+      renderCart();
+    } else if (control.dataset.action === "cart-coupon") {
+      state = read();
+      state.selectedCartCouponId = control.value || "";
+      write(state);
+      renderCart();
+    } else if (control.dataset.action === "checkout-coupon") {
+      state = read();
+      state.selectedCartCouponId = control.value || "";
+      write(state);
+      const selected = state.cart.filter(item => item.selected).map(item => {
+        const product = productById(item.productId);
+        return { item, sku: product?.skus?.find(sku => sku.id === item.skuId) || product?.skus?.[0] };
+      }).filter(item => item.sku);
+      const pricing = cartPricing(selected, state.selectedCartCouponId);
+      const total = document.querySelector(".checkout-modal-total");
+      if (total) total.innerHTML = `预估应付 <strong>${money(pricing.total)}</strong>（含配送费）`;
+    }
+  });
+
   document.addEventListener("click", event => {
     const modalAction = event.target.closest("[data-action]");
     if (modalAction?.dataset.action === "modal-add-cart") {
@@ -659,11 +892,13 @@
     } else if (modalAction?.dataset.action === "confirm-order") {
       try {
         const selected = state.cart.filter(item => item.selected);
-        const addressText = document.getElementById("checkout-address")?.value.trim();
-        if (!addressText) throw new Error("请填写收货地址");
+        state = read();
+        const address = selectedAddress(state);
+        if (!address) throw new Error("请先添加或选择收货地址");
+        const orderAddress = { name: address.name, phone: address.phone, text: addressText(address) };
         const order = window.MallOps.createOrder({
           lines: selected.map(item => ({ productId: item.productId, skuId: item.skuId || productById(item.productId)?.skus?.[0]?.id, qty: item.qty })),
-          address: { name: state.user.name, phone: state.user.phone, text: addressText },
+          address: orderAddress,
           couponId: document.getElementById("checkout-coupon")?.value || "",
           remark: document.getElementById("checkout-remark")?.value.trim() || "",
           shareTokenId: sessionStorage.getItem("mall-pending-share-token") || params.get("share") || ""
@@ -687,6 +922,10 @@
     state = read();
     if (root.dataset.page === "home") renderHome();
     else if (root.dataset.page === "membership") renderMembership();
+    else if (root.dataset.page === "cart") renderCart();
+    else if (root.dataset.page === "profile") renderProfile();
+    else if (root.dataset.page === "addresses") renderAddresses();
+    else if (root.dataset.page === "points") renderPoints();
   });
 
   const page = root.dataset.page;
@@ -695,6 +934,8 @@
   else if (page === "membership") renderMembership();
   else if (page === "cart") renderCart();
   else if (page === "profile") renderProfile();
+  else if (page === "addresses") renderAddresses();
+  else if (page === "points") renderPoints();
   else if (page === "shop") renderShop();
   else if (page === "zone") renderZone();
   else if (page === "product-detail") renderProductDetail();
