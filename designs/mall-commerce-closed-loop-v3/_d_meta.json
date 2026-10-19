@@ -1,0 +1,303 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "index": {
+      "versions": [
+        {
+          "path": "index.html",
+          "createdAt": "2026-10-19T05:50:34.855Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "入口"
+        }
+      ]
+    },
+    "mini-home": {
+      "versions": [
+        {
+          "path": "mini-home.html",
+          "createdAt": "2026-10-19T05:50:35.062Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 375,
+            "height": 812
+          },
+          "section": "小程序"
+        }
+      ]
+    },
+    "mini-membership": {
+      "versions": [
+        {
+          "path": "mini-membership.html",
+          "createdAt": "2026-10-19T05:50:35.257Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 375,
+            "height": 812
+          },
+          "section": "小程序"
+        }
+      ]
+    },
+    "mini-cart": {
+      "versions": [
+        {
+          "path": "mini-cart.html",
+          "createdAt": "2026-10-19T05:50:35.450Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 375,
+            "height": 812
+          },
+          "section": "小程序"
+        }
+      ]
+    },
+    "mini-profile": {
+      "versions": [
+        {
+          "path": "mini-profile.html",
+          "createdAt": "2026-10-19T05:50:35.643Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 375,
+            "height": 812
+          },
+          "section": "小程序"
+        }
+      ]
+    },
+    "mini-shop": {
+      "versions": [
+        {
+          "path": "mini-shop.html",
+          "createdAt": "2026-10-19T05:50:35.862Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 375,
+            "height": 812
+          },
+          "section": "小程序"
+        }
+      ]
+    },
+    "mini-zone": {
+      "versions": [
+        {
+          "path": "mini-zone.html",
+          "createdAt": "2026-10-19T05:50:36.053Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 375,
+            "height": 812
+          },
+          "section": "小程序"
+        }
+      ]
+    },
+    "admin-products": {
+      "versions": [
+        {
+          "path": "admin-products.html",
+          "createdAt": "2026-10-19T05:50:36.246Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "运营后台"
+        }
+      ]
+    },
+    "admin-membership": {
+      "versions": [
+        {
+          "path": "admin-membership.html",
+          "createdAt": "2026-10-19T05:50:36.432Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "运营后台"
+        }
+      ]
+    },
+    "admin-banner-zones": {
+      "versions": [
+        {
+          "path": "admin-banner-zones.html",
+          "createdAt": "2026-10-19T05:50:36.624Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "运营后台"
+        }
+      ]
+    },
+    "admin-aftersales": {
+      "versions": [
+        {
+          "path": "admin-aftersales.html",
+          "createdAt": "2026-10-19T06:16:19.831Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "运营后台"
+        }
+      ]
+    },
+    "admin-distribution": {
+      "versions": [
+        {
+          "path": "admin-distribution.html",
+          "createdAt": "2026-10-19T06:16:20.274Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "运营后台"
+        }
+      ]
+    },
+    "admin-logistics": {
+      "versions": [
+        {
+          "path": "admin-logistics.html",
+          "createdAt": "2026-10-19T06:16:20.602Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "运营后台"
+        }
+      ]
+    },
+    "admin-marketing": {
+      "versions": [
+        {
+          "path": "admin-marketing.html",
+          "createdAt": "2026-10-19T06:16:20.831Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "运营后台"
+        }
+      ]
+    },
+    "admin-orders": {
+      "versions": [
+        {
+          "path": "admin-orders.html",
+          "createdAt": "2026-10-19T06:16:21.215Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "运营后台"
+        }
+      ]
+    },
+    "admin-overview": {
+      "versions": [
+        {
+          "path": "admin-overview.html",
+          "createdAt": "2026-10-19T06:16:21.405Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "运营后台"
+        }
+      ]
+    },
+    "admin-users": {
+      "versions": [
+        {
+          "path": "admin-users.html",
+          "createdAt": "2026-10-19T06:16:21.796Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "运营后台"
+        }
+      ]
+    },
+    "mini-coupons": {
+      "versions": [
+        {
+          "path": "mini-coupons.html",
+          "createdAt": "2026-10-19T06:16:22.406Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 375,
+            "height": 812
+          },
+          "section": "小程序"
+        }
+      ]
+    },
+    "mini-distribution": {
+      "versions": [
+        {
+          "path": "mini-distribution.html",
+          "createdAt": "2026-10-19T06:16:22.601Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 375,
+            "height": 812
+          },
+          "section": "小程序"
+        }
+      ]
+    },
+    "mini-orders": {
+      "versions": [
+        {
+          "path": "mini-orders.html",
+          "createdAt": "2026-10-19T06:16:23.198Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 375,
+            "height": 812
+          },
+          "section": "小程序"
+        }
+      ]
+    },
+    "mini-promotions": {
+      "versions": [
+        {
+          "path": "mini-promotions.html",
+          "createdAt": "2026-10-19T06:16:23.688Z",
+          "status": "needs-review",
+          "viewport": {
+            "width": 375,
+            "height": 812
+          },
+          "section": "小程序"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-10-19T05:50:34.857Z",
+  "updatedAt": "2026-10-19T06:16:24.083Z"
+}
