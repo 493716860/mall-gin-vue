@@ -196,7 +196,20 @@
       points: 2680,
       distributor: true,
       referralCode: "LIN2680",
-      avatar: "林"
+      avatar: "林",
+      avatarDataUrl: "",
+      gender: "女",
+      birthday: "1994-08-16",
+      province: "上海市",
+      city: "上海市",
+      district: "徐汇区",
+      passwordConfigured: true,
+      passwordUpdatedAt: "2026-09-20",
+      authorizations: { location: true, camera: false, album: false, notifications: true },
+      realName: { name: "林女士", maskedId: "310***********6218", status: "已认证" },
+      pets: [
+        { id: "PET-001", name: "团团", kind: "猫咪", breed: "英短", birthday: "2021-05-16" }
+      ]
     },
     orders: [
       {
@@ -422,7 +435,13 @@
       { id: "zto", name: "中通快递", enabled: true },
       { id: "jd", name: "京东物流", enabled: true }
     ],
-    settings: { commissionRate: 5, minimumWithdrawal: 100, freeShippingThreshold: 99 }
+    settings: { commissionRate: 5, minimumWithdrawal: 100, freeShippingThreshold: 99 },
+    legalDocuments: [
+      { id: "privacy", title: "隐私声明", category: "隐私政策", version: "v1.0", updatedAt: "2026-10-01", status: "active", content: "我们仅为提供商城服务收集必要的信息，包括账号资料、订单与配送信息、客服沟通内容及必要的设备信息。我们会采取合理的安全措施保护信息，并按法律法规要求处理和保存。您可以在授权管理中调整非必要权限，或通过安全中心提交账号注销申请。" },
+      { id: "mall-terms", title: "商城用户服务协议", category: "服务协议", version: "v1.0", updatedAt: "2026-10-01", status: "active", content: "欢迎使用本商城服务。您可浏览和购买商品、管理订单、申请售后及联系在线客服。提交订单前请核对商品、规格、价格和收货信息。支付、配送、退款及售后以订单页面和运营规则为准。" },
+      { id: "membership-rules", title: "会员与积分规则", category: "业务规则", version: "v1.0", updatedAt: "2026-10-01", status: "active", content: "会员等级、成长值、积分获取和使用规则由商城运营页面公布。积分及会员权益不可兑换现金，具体有效期、使用范围和限制以活动页面及订单结算页提示为准。" },
+      { id: "after-sales-rules", title: "售后与退换货规则", category: "业务规则", version: "v1.0", updatedAt: "2026-10-01", status: "active", content: "您可在订单页面提交售后申请。售后范围、处理时限、退货地址及退款方式以订单详情和客服确认信息为准。商品及配件请保持完整，依法不适用无理由退货的商品除外。" }
+    ]
   };
 
   const demoSales = [2680, 1940, 1510, 1280, 980, 860, 720, 640];
@@ -492,6 +511,11 @@
       }
       const parsed = JSON.parse(stored);
       const state = { ...JSON.parse(JSON.stringify(defaults)), ...parsed };
+      state.user = { ...defaults.user, ...(state.user || {}) };
+      state.user.authorizations = { ...defaults.user.authorizations, ...(state.user.authorizations || {}) };
+      state.user.realName = { ...defaults.user.realName, ...(state.user.realName || {}) };
+      state.user.pets ||= JSON.parse(JSON.stringify(defaults.user.pets));
+      state.legalDocuments ||= JSON.parse(JSON.stringify(defaults.legalDocuments));
       state.orders ||= [];
       if (!state.orders.some(order => order.id === "M202610140006")) {
         const reviewDemoOrder = defaults.orders.find(order => order.id === "M202610140006");

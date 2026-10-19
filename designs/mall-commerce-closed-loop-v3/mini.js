@@ -11,6 +11,7 @@
   let detailGalleryIndex = 0;
   let detailQty = 1;
   let detailSkuId = params.get("sku") || "";
+  let phoneCodeRequested = false;
 
   function captureShareLanding() {
     const shareToken = params.get("share");
@@ -357,11 +358,14 @@
       .reduce((count, order) => count + order.items.filter(item => !item.reviewId).length, 0);
     miniShell({
       active: "profile",
-      header: `<div class="mini-head-row"><span class="mini-title">我的</span><a href="#settings" data-action="profile-item" data-title="设置" class="head-link">${icon("settings")}</a></div>`,
-      content: `<div class="profile-hero"><div class="profile-id">
-          <div class="avatar">林</div><div><div class="profile-name">林间有风</div><a class="profile-member" href="mini-membership.html">${icon("member")} ${esc(tier.name)}　查看会员中心 ${icon("chevron")}</a></div>
-          <span style="margin-left:auto;color:rgba(255,255,255,.55)">${icon("chevron")}</span>
-        </div>
+      header: `<div class="mini-head-row"><span class="mini-title">我的</span><a href="mini-profile.html?view=settings" class="head-link" aria-label="设置">${icon("settings")}</a></div>`,
+      content: `<div class="profile-hero">
+          <a class="profile-id profile-profile-link" href="mini-profile.html?view=personal">
+            ${avatarMarkup(state.user, "avatar")}
+            <span class="profile-link-copy"><strong class="profile-name">${esc(state.user.name || "商城用户")}</strong><small>个人资料与宠物信息</small></span>
+            <span class="profile-link-arrow">${icon("chevron")}</span>
+          </a>
+          <a class="profile-member" href="mini-membership.html">${icon("member")} ${esc(tier.name)}　查看会员中心 ${icon("chevron")}</a>
       </div>
       <div class="mini-content" style="padding-top:12px">
         <section class="white-card" style="padding:13px 9px 10px">
@@ -371,11 +375,326 @@
           </div>
         </section>
         <section class="section white-card" style="padding:2px 13px">
-          ${[["营销中心","gift","mini-promotions.html"],["我的优惠券","tag","mini-coupons.html"],["分销中心","chart","mini-distribution.html"],["收货地址","homeGoods","mini-addresses.html"],["积分","member","mini-points.html"],["客服","service","mini-profile.html?view=chat"],["设置","settings","#settings"]].map(([label, glyph, href]) => `<a href="${href}" ${href.startsWith("#") ? `data-action="profile-item" data-title="${label}"` : ""} class="list-link"><span style="display:flex;align-items:center;gap:9px">${icon(glyph)}<strong style="font-weight:550">${label}</strong></span><span>${icon("chevron")}</span></a>`).join("")}
+          ${[["营销中心","gift","mini-promotions.html"],["我的优惠券","tag","mini-coupons.html"],["分销中心","chart","mini-distribution.html"],["收货地址","homeGoods","mini-addresses.html"],["积分","member","mini-points.html"],["客服","service","mini-profile.html?view=chat"],["设置","settings","mini-profile.html?view=settings"]].map(([label, glyph, href]) => `<a href="${href}" class="list-link"><span style="display:flex;align-items:center;gap:9px">${icon(glyph)}<strong style="font-weight:550">${label}</strong></span><span>${icon("chevron")}</span></a>`).join("")}
         </section>
         <div class="mini-notice">Mi Store · 认真生活，好好购物</div>
       </div>`
     });
+  }
+
+  function avatarMarkup(user, className = "avatar") {
+    return user.avatarDataUrl
+      ? `<span class="${className} avatar-photo"><img src="${esc(user.avatarDataUrl)}" alt="头像"></span>`
+      : `<span class="${className}">${esc((user.name || user.avatar || "用").slice(0, 1))}</span>`;
+  }
+
+  function petAge(birthday) {
+    if (!birthday) return "年龄待完善";
+    const born = new Date(`${birthday}T00:00:00`);
+    if (Number.isNaN(born.getTime()) || born > new Date()) return "年龄待完善";
+    const now = new Date();
+    const months = Math.max(0, (now.getFullYear() - born.getFullYear()) * 12 + now.getMonth() - born.getMonth() - (now.getDate() < born.getDate() ? 1 : 0));
+    return months >= 12 ? `${Math.floor(months / 12)} 岁${months % 12 ? ` ${months % 12} 个月` : ""}` : `${months} 个月`;
+  }
+
+  function renderAccountPage(title, content, backView = "settings") {
+    const backUrl = backView === "profile" ? "mini-profile.html" : `mini-profile.html?view=${encodeURIComponent(backView)}`;
+    miniShell({
+      active: "profile",
+      header: `<div class="mini-head-row"><a class="head-link" href="${backUrl}" aria-label="返回">${icon("chevron")}</a><span class="mini-title">${esc(title)}</span><a class="head-link" href="mini-profile.html?view=settings" aria-label="设置">${icon("settings")}</a></div>`,
+      content: `<div class="mini-content account-page">${content}</div>`
+    });
+  }
+
+  function navigateProfileView(view) {
+    history.replaceState(null, "", `mini-profile.html?view=${encodeURIComponent(view)}`);
+    params.set("view", view);
+  }
+
+  function maskedPhone(phone = "") {
+    return /^1\d{10}$/.test(phone) ? `${phone.slice(0, 3)}****${phone.slice(-4)}` : phone;
+  }
+
+  function renderPersonal() {
+    state = read();
+    const user = state.user;
+    user.pets ||= [];
+    const region = [user.province, user.city, user.district].filter(Boolean).join(" ");
+    const pets = user.pets.map(pet => `<article class="pet-editor-card">
+      <form class="pet-editor-form" data-pet-id="${esc(pet.id)}">
+        <div class="pet-editor-head"><span><strong>${esc(pet.name || "新宠物")}</strong><small>${esc(pet.kind || "宠物")} · ${esc(pet.breed || "品种待完善")} · ${esc(petAge(pet.birthday))}</small></span><button type="button" class="text-action" data-action="pet-delete" data-id="${esc(pet.id)}">删除</button></div>
+        <div class="form-grid">
+          <label class="field">宠物昵称<input name="name" required maxlength="20" value="${esc(pet.name || "")}" placeholder="如：团团"></label>
+          <label class="field">宠物类型<select name="kind"><option ${pet.kind === "猫咪" ? "selected" : ""}>猫咪</option><option ${pet.kind === "狗狗" ? "selected" : ""}>狗狗</option><option ${pet.kind && !["猫咪", "狗狗"].includes(pet.kind) ? "selected" : ""}>其他</option></select></label>
+          <label class="field">品种<input name="breed" maxlength="30" value="${esc(pet.breed || "")}" placeholder="如：英短"></label>
+          <label class="field">生日<input name="birthday" type="date" value="${esc(pet.birthday || "")}"></label>
+        </div>
+        <button class="secondary-btn pet-save-button" type="submit">保存宠物信息</button>
+      </form>
+    </article>`).join("");
+    renderAccountPage("个人信息", `
+      <div class="account-page-intro"><strong>个人信息</strong><span>完善资料，让服务更贴合你的需要</span></div>
+      <section class="white-card account-section">
+        <div class="account-section-head"><strong>基本信息</strong><small>仅用于账号识别、配送与服务</small></div>
+        <form id="personal-info-form">
+          <div class="avatar-edit-row">${avatarMarkup(user, "avatar account-avatar")}<label class="secondary-btn avatar-upload-label">更换头像<input id="avatar-upload" type="file" accept="image/*" hidden></label><small>支持 JPG / PNG，最大 1 MB</small></div>
+          <div class="form-grid">
+            <label class="field">姓名<input name="name" required maxlength="30" value="${esc(user.name || "")}" placeholder="请输入姓名"></label>
+            <label class="field">性别<select name="gender"><option value="">请选择</option><option value="女" ${user.gender === "女" ? "selected" : ""}>女</option><option value="男" ${user.gender === "男" ? "selected" : ""}>男</option><option value="不便透露" ${user.gender === "不便透露" ? "selected" : ""}>不便透露</option></select></label>
+            <label class="field">生日<input name="birthday" type="date" value="${esc(user.birthday || "")}"></label>
+            <label class="field">所在地区<input name="region" value="${esc(region)}" placeholder="省 / 市 / 区"></label>
+          </div>
+          <div class="account-phone-row"><span><small>手机号</small><strong>${esc(maskedPhone(user.phone || "未绑定"))}</strong></span><a class="secondary-btn" href="mini-profile.html?view=change-phone&back=personal">更换手机号</a></div>
+          <a class="account-address-link" href="mini-addresses.html"><span><strong>收货地址</strong><small>管理配送地址与默认地址</small></span><span>${state.addresses?.length || 0} 个地址　${icon("chevron")}</span></a>
+          <button class="primary-btn account-save-button" type="submit">保存基本信息</button>
+        </form>
+      </section>
+      <section class="account-section">
+        <div class="account-section-head"><span><strong>我的宠物</strong><small>生日、品种与年龄信息</small></span><button type="button" class="secondary-btn" data-action="pet-add">＋ 添加宠物</button></div>
+        ${pets || `<div class="white-card account-empty">还没有宠物信息，点击“添加宠物”开始记录。</div>`}
+      </section>
+      <p class="mini-notice">个人资料保存在当前浏览器的演示数据中。</p>`, "profile");
+
+    root.querySelector("#personal-info-form")?.addEventListener("submit", event => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      state = read();
+      state.user.name = String(form.get("name") || "").trim();
+      state.user.gender = String(form.get("gender") || "");
+      state.user.birthday = String(form.get("birthday") || "");
+      const parts = String(form.get("region") || "").trim().split(/[，,\s]+/).filter(Boolean);
+      [state.user.province, state.user.city, state.user.district] = [parts[0] || "", parts[1] || "", parts.slice(2).join("") || ""];
+      write(state);
+      renderPersonal();
+      toast("基本信息已保存");
+    });
+    root.querySelectorAll(".pet-editor-form").forEach(formElement => {
+      formElement.addEventListener("submit", event => {
+        event.preventDefault();
+        const form = new FormData(formElement);
+        state = read();
+        const pet = state.user.pets?.find(item => item.id === formElement.dataset.petId);
+        if (!pet) return;
+        pet.name = String(form.get("name") || "").trim();
+        pet.kind = String(form.get("kind") || "其他");
+        pet.breed = String(form.get("breed") || "").trim();
+        pet.birthday = String(form.get("birthday") || "");
+        write(state);
+        renderPersonal();
+        toast("宠物信息已保存");
+      });
+    });
+    root.querySelector("#avatar-upload")?.addEventListener("change", event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      if (file.size > 1_000_000) return toast("头像图片不能超过 1 MB");
+      const reader = new FileReader();
+      reader.onload = () => {
+        state = read();
+        state.user.avatarDataUrl = String(reader.result || "");
+        write(state);
+        renderPersonal();
+        toast("头像已更新");
+      };
+      reader.onerror = () => toast("图片读取失败，请重试");
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function renderSettings() {
+    state = read();
+    renderAccountPage("设置", `
+      <div class="account-page-intro"><strong>账号与隐私设置</strong><span>管理登录、安全、授权与服务规则</span></div>
+      <section class="white-card account-menu-group">
+        <div class="account-menu-title">账号与安全</div>
+        <a class="account-menu-row" href="mini-profile.html?view=change-phone"><span><strong>更换手机号</strong><small>当前绑定：${esc(maskedPhone(state.user.phone || "未绑定"))}</small></span>${icon("chevron")}</a>
+        <a class="account-menu-row" href="mini-profile.html?view=set-password"><span><strong>设置登录密码</strong><small>定期更新密码，保护账号安全</small></span>${icon("chevron")}</a>
+        <a class="account-menu-row" href="mini-profile.html?view=permissions"><span><strong>授权管理</strong><small>管理位置、相机、相册与通知权限</small></span>${icon("chevron")}</a>
+        <a class="account-menu-row" href="mini-profile.html?view=security"><span><strong>安全中心</strong><small>实名认证、账号注销与常见问题</small></span>${icon("chevron")}</a>
+      </section>
+      <section class="white-card account-menu-group">
+        <div class="account-menu-title">协议与隐私</div>
+        <a class="account-menu-row" href="mini-profile.html?view=legal"><span><strong>协议与规则</strong><small>隐私声明、商城协议、会员及售后规则</small></span>${icon("chevron")}</a>
+        <a class="account-menu-row" href="mini-profile.html?view=collection"><span><strong>个人信息收集清单</strong><small>查看信息类别、用途与使用场景</small></span>${icon("chevron")}</a>
+      </section>
+      <p class="mini-notice">账号、安全与协议设置为本地交互演示，不连接真实身份或认证服务。</p>`);
+  }
+
+  function renderPermissions() {
+    state = read();
+    state.user.authorizations ||= {};
+    const items = [
+      ["location", "位置信息", "用于自动填写收货地址与配送范围判断"],
+      ["camera", "相机", "用于拍摄头像、商品问题及客服图片"],
+      ["album", "相册与媒体", "用于选择头像及向客服发送图片、视频"],
+      ["notifications", "消息通知", "用于订单状态、客服回复与活动消息提醒"]
+    ];
+    renderAccountPage("授权管理", `<div class="account-page-intro"><strong>应用权限</strong><span>你可以随时调整可选权限</span></div>
+      <section class="white-card account-menu-group">${items.map(([key, title, description]) => `<label class="permission-row"><span><strong>${title}</strong><small>${description}</small></span><input type="checkbox" data-action="authorization-toggle" data-key="${key}" ${state.user.authorizations[key] ? "checked" : ""}></label>`).join("")}</section>
+      <div class="inline-help">关闭权限后，对应功能可能需要你手动输入信息或无法使用媒体能力。必要的订单信息处理不受此处开关影响。</div>`);
+    root.querySelectorAll("[data-action='authorization-toggle']").forEach(control => {
+      control.addEventListener("change", () => {
+        state = read();
+        state.user.authorizations ||= {};
+        state.user.authorizations[control.dataset.key] = control.checked;
+        write(state);
+        toast(`${control.checked ? "已开启" : "已关闭"}${control.closest(".permission-row")?.querySelector("strong")?.textContent || "权限"}`);
+      });
+    });
+  }
+
+  function renderLegalDocuments() {
+    state = read();
+    const documents = (state.legalDocuments || []).filter(item => item.status !== "inactive");
+    renderAccountPage("协议与规则", `<div class="account-page-intro"><strong>协议与规则</strong><span>内容由商城运营维护，更新后同步展示</span></div>
+      <section class="white-card account-menu-group">${documents.map(document => `<button class="account-menu-row account-menu-button" type="button" data-action="legal-open" data-id="${esc(document.id)}"><span><strong>${esc(document.title)}</strong><small>${esc(document.category || "商城规则")} · ${esc(document.version || "当前版本")} · 更新于 ${esc(document.updatedAt || "—")}</small></span>${icon("chevron")}</button>`).join("") || `<div class="account-empty">暂无已发布的协议与规则</div>`}</section>
+      <p class="mini-notice">具体适用范围与生效时间以运营后台发布版本为准。</p>`);
+  }
+
+  function renderInformationCollection() {
+    const rows = [
+      ["账号与联系方式", "姓名、手机号", "账号识别、登录保护及客服联系"],
+      ["配送与订单", "收货人、地址、商品、支付及物流状态", "完成下单、配送、售后与交易记录查询"],
+      ["设备与权限", "设备基础信息、系统授权状态", "保障服务运行、问题排查与权限调用"],
+      ["客服沟通", "文字、图片、视频及会话时间", "处理咨询、投诉和售后问题"],
+      ["个人自愿资料", "性别、生日、地区、宠物资料", "个性化展示、会员服务及相关商品推荐"]
+    ];
+    renderAccountPage("个人信息收集清单", `<div class="account-page-intro"><strong>我们收集的信息</strong><span>按功能必要性使用，不同信息对应不同服务目的</span></div>
+      <section class="white-card collection-list">${rows.map(([title, data, purpose], index) => `<article class="collection-row"><span class="collection-index">0${index + 1}</span><div><strong>${title}</strong><small>信息范围：${data}</small><small>使用目的：${purpose}</small></div></article>`).join("")}</section>
+      <div class="inline-help">你可在授权管理中关闭非必要设备权限；订单履约所需信息会在订单、售后及法律要求的期限内处理。</div>`);
+  }
+
+  function renderSecurityCenter() {
+    state = read();
+    const realNameStatus = state.user.realName?.status || "未认证";
+    renderAccountPage("安全中心", `<div class="account-page-intro"><strong>账号安全</strong><span>认证状态：${esc(realNameStatus)}</span></div>
+      <section class="white-card account-menu-group">
+        <a class="account-menu-row" href="mini-profile.html?view=real-name"><span><strong>更新实名认证信息</strong><small>${esc(state.user.realName?.name || "尚未认证")} · ${esc(state.user.realName?.maskedId || "未填写证件信息")}</small></span>${icon("chevron")}</a>
+        <a class="account-menu-row" href="mini-profile.html?view=set-password&back=security"><span><strong>登录密码</strong><small>${state.user.passwordConfigured ? `上次更新：${esc(state.user.passwordUpdatedAt || "—")}` : "尚未设置登录密码"}</small></span>${icon("chevron")}</a>
+        <a class="account-menu-row" href="mini-profile.html?view=faq"><span><strong>常见问题</strong><small>手机号、安全验证、账号和隐私</small></span>${icon("chevron")}</a>
+        <a class="account-menu-row danger-link" href="mini-profile.html?view=cancel-account"><span><strong>注销账号</strong><small>${state.user.accountDeletionRequest?.status === "pending" ? "注销申请处理中" : "提交后将由客服核验处理"}</small></span>${icon("chevron")}</a>
+      </section>
+      <div class="inline-help">为保护你的权益，账号注销申请需要完成身份核验；本原型只记录申请，不会真实删除账号或订单数据。</div>`, "settings");
+  }
+
+  function renderChangePhone() {
+    state = read();
+    renderAccountPage("更换手机号", `<div class="account-page-intro"><strong>验证新手机号</strong><span>更换后将用于账号登录与重要通知</span></div>
+      <section class="white-card account-form-card"><form id="change-phone-form">
+        <label class="field">当前手机号<input value="${esc(maskedPhone(state.user.phone || "未绑定"))}" disabled></label>
+        <label class="field">新手机号<input name="phone" type="tel" inputmode="numeric" pattern="1[3-9][0-9]{9}" maxlength="11" required placeholder="请输入 11 位手机号"></label>
+        <label class="field">短信验证码<span class="phone-code-row"><input name="code" inputmode="numeric" maxlength="6" required placeholder="演示验证码：123456"><button type="button" class="secondary-btn" data-action="send-phone-code">获取验证码</button></span></label>
+        <button class="primary-btn account-save-button" type="submit">确认更换</button>
+      </form></section><div class="inline-help">原型验证码固定为 123456，仅用于演示流程，不会发送真实短信。</div>`, params.get("back") || "settings");
+    root.querySelector("#change-phone-form")?.addEventListener("submit", event => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const phone = String(form.get("phone") || "").trim();
+      if (!phoneCodeRequested) return toast("请先获取短信验证码");
+      if (String(form.get("code")) !== "123456") return toast("验证码错误，请输入 123456");
+      state = read();
+      state.user.phone = phone;
+      state.user.phoneUpdatedAt = new Date().toISOString().slice(0, 10);
+      write(state);
+      phoneCodeRequested = false;
+      navigateProfileView("personal");
+      renderPersonal();
+      toast("手机号已更新");
+    });
+  }
+
+  function renderSetPassword() {
+    renderAccountPage("设置登录密码", `<div class="account-page-intro"><strong>设置新的登录密码</strong><span>至少 8 位，建议包含字母与数字</span></div>
+      <section class="white-card account-form-card"><form id="password-form">
+        <label class="field">新密码<input name="password" type="password" minlength="8" maxlength="64" autocomplete="new-password" required placeholder="至少 8 位字符"></label>
+        <label class="field">确认新密码<input name="confirm" type="password" minlength="8" maxlength="64" autocomplete="new-password" required placeholder="再次输入新密码"></label>
+        <button class="primary-btn account-save-button" type="submit">保存密码</button>
+      </form></section><div class="inline-help">演示环境不会保存密码明文，只记录密码已设置及更新时间。</div>`, params.get("back") || "settings");
+    root.querySelector("#password-form")?.addEventListener("submit", event => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      if (form.get("password") !== form.get("confirm")) return toast("两次输入的密码不一致");
+      state = read();
+      state.user.passwordConfigured = true;
+      state.user.passwordUpdatedAt = new Date().toISOString().slice(0, 10);
+      write(state);
+      navigateProfileView("security");
+      renderSecurityCenter();
+      toast("登录密码已更新");
+    });
+  }
+
+  function renderRealName() {
+    state = read();
+    const profile = state.user.realName || {};
+    renderAccountPage("更新实名认证信息", `<div class="account-page-intro"><strong>实名认证</strong><span>当前状态：${esc(profile.status || "未认证")}</span></div>
+      <section class="white-card account-form-card"><form id="real-name-form">
+        <label class="field">真实姓名<input name="name" required maxlength="30" value="${esc(profile.name || "")}" placeholder="请输入证件姓名"></label>
+        <label class="field">身份证号码<input name="idNumber" inputmode="numeric" minlength="15" maxlength="18" required placeholder="${profile.maskedId ? `当前 ${esc(profile.maskedId)}，请输入新证件号码` : "请输入 15 或 18 位身份证号码"}"></label>
+        <button class="primary-btn account-save-button" type="submit">提交核验申请</button>
+      </form></section><div class="inline-help">演示仅保存姓名、脱敏证件尾号和待核验状态，不保留完整证件号码。</div>`, "security");
+    root.querySelector("#real-name-form")?.addEventListener("submit", event => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const idNumber = String(form.get("idNumber") || "").trim();
+      if (!/^(\d{15}|\d{17}[\dXx])$/.test(idNumber)) return toast("请输入有效的身份证号码");
+      state = read();
+      state.user.realName = { name: String(form.get("name") || "").trim(), maskedId: `${"*".repeat(idNumber.length - 4)}${idNumber.slice(-4)}`, status: "待核验", updatedAt: new Date().toISOString().slice(0, 10) };
+      write(state);
+      navigateProfileView("security");
+      renderSecurityCenter();
+      toast("实名认证更新申请已提交");
+    });
+  }
+
+  function renderAccountFaq() {
+    const questions = [
+      ["如何更换绑定手机号？", "在设置中选择“更换手机号”，输入新手机号并完成演示验证码校验。正式服务需通过短信或其他安全验证。"],
+      ["忘记登录密码怎么办？", "通过已绑定手机号完成身份验证后重设密码；本原型只演示设置流程，不连接真实认证服务。"],
+      ["如何撤回应用授权？", "进入设置 - 授权管理，可随时关闭位置、相机、相册或通知权限。"],
+      ["提交注销申请后会立即删除数据吗？", "不会。注销申请需要核验身份并处理未完成订单、售后及法定留存义务后完成。"]
+    ];
+    renderAccountPage("常见问题", `<div class="account-page-intro"><strong>账号与隐私常见问题</strong><span>点击查看处理说明</span></div>
+      <section class="white-card account-menu-group">${questions.map(([question, answer], index) => `<details class="faq-row" ${index === 0 ? "open" : ""}><summary>${question}<span>＋</span></summary><p>${answer}</p></details>`).join("")}</section>`, "security");
+  }
+
+  function renderCancelAccount() {
+    state = read();
+    const request = state.user.accountDeletionRequest;
+    renderAccountPage("注销账号", `<div class="account-warning-card"><strong>提交前请了解</strong><p>注销申请提交后，客服将核验身份并确认未完成订单、退款与售后状态。完成注销后，账号服务及未使用权益可能无法恢复。</p></div>
+      ${request?.status === "pending" ? `<section class="white-card account-form-card"><strong>申请处理中</strong><p class="inline-help">提交时间：${esc(request.requestedAt || "—")} · 请等待客服联系你完成核验。</p></section>` : `<section class="white-card account-form-card"><form id="cancel-account-form">
+        <label class="field">注销原因<select name="reason"><option>不再使用</option><option>隐私顾虑</option><option>账号问题</option><option>其他原因</option></select></label>
+        <label class="permission-row cancel-confirm"><span><strong>我已了解注销影响</strong><small>确认提交账号注销申请，后续由客服进行身份核验</small></span><input type="checkbox" name="confirm" required></label>
+        <button class="danger-button account-save-button" type="submit">提交注销申请</button>
+      </form></section>`}
+      <div class="inline-help">本原型只记录待处理申请，不会删除账号或个人数据。</div>`, "security");
+    root.querySelector("#cancel-account-form")?.addEventListener("submit", event => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      if (!form.get("confirm")) return toast("请先确认已了解注销影响");
+      state = read();
+      state.user.accountDeletionRequest = { status: "pending", reason: String(form.get("reason") || ""), requestedAt: new Date().toLocaleString("zh-CN") };
+      write(state);
+      renderCancelAccount();
+      toast("注销申请已提交");
+    });
+  }
+
+  function renderProfileView() {
+    const view = params.get("view") || "";
+    if (view === "chat") renderChat();
+    else if (view === "personal") renderPersonal();
+    else if (view === "settings") renderSettings();
+    else if (view === "permissions") renderPermissions();
+    else if (view === "legal") renderLegalDocuments();
+    else if (view === "collection") renderInformationCollection();
+    else if (view === "security") renderSecurityCenter();
+    else if (view === "change-phone") renderChangePhone();
+    else if (view === "set-password") renderSetPassword();
+    else if (view === "real-name") renderRealName();
+    else if (view === "faq") renderAccountFaq();
+    else if (view === "cancel-account") renderCancelAccount();
+    else renderProfile();
   }
 
   function chatTime() {
@@ -976,6 +1295,25 @@
       write(state);
       renderAddresses();
       toast("地址已删除");
+    } else if (action === "pet-add") {
+      state = read();
+      state.user.pets ||= [];
+      state.user.pets.push({ id: `PET-${Date.now()}`, name: "", kind: "猫咪", breed: "", birthday: "" });
+      write(state);
+      renderPersonal();
+    } else if (action === "pet-delete") {
+      state = read();
+      state.user.pets = (state.user.pets || []).filter(pet => pet.id !== control.dataset.id);
+      write(state);
+      renderPersonal();
+      toast("宠物信息已删除");
+    } else if (action === "send-phone-code") {
+      phoneCodeRequested = true;
+      toast("演示验证码已发送：123456");
+    } else if (action === "legal-open") {
+      state = read();
+      const document = state.legalDocuments?.find(item => item.id === control.dataset.id && item.status !== "inactive");
+      if (document) openModal(document.title, `<article class="legal-document-body"><div>${esc(document.category || "商城规则")} · ${esc(document.version || "当前版本")} · 更新于 ${esc(document.updatedAt || "—")}</div><p>${esc(document.content || "").replace(/\r?\n/g, "<br>")}</p></article>`);
     } else if (action === "profile-item") {
       event.preventDefault();
       const title = control.dataset.title || "服务";
@@ -1084,7 +1422,7 @@
     if (root.dataset.page === "home") renderHome();
     else if (root.dataset.page === "membership") renderMembership();
     else if (root.dataset.page === "cart") renderCart();
-    else if (root.dataset.page === "profile") params.get("view") === "chat" ? renderChat() : renderProfile();
+    else if (root.dataset.page === "profile") renderProfileView();
     else if (root.dataset.page === "addresses") renderAddresses();
     else if (root.dataset.page === "points") renderPoints();
   });
@@ -1094,7 +1432,7 @@
   if (page === "home") renderHome();
   else if (page === "membership") renderMembership();
   else if (page === "cart") renderCart();
-  else if (page === "profile") params.get("view") === "chat" ? renderChat() : renderProfile();
+  else if (page === "profile") renderProfileView();
   else if (page === "addresses") renderAddresses();
   else if (page === "points") renderPoints();
   else if (page === "shop") renderShop();

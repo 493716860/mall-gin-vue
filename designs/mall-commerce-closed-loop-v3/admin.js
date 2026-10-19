@@ -293,6 +293,70 @@
     });
   }
 
+  function renderLegalDocuments() {
+    state = read();
+    state.legalDocuments ||= [];
+    const activeCount = state.legalDocuments.filter(item => item.status !== "inactive").length;
+    const rows = state.legalDocuments.map(document => `<tr>
+      <td><strong>${esc(document.title)}</strong><small class="review-meta">${esc(document.id)}</small></td>
+      <td>${esc(document.category || "商城规则")}</td>
+      <td>${esc(document.version || "—")}</td>
+      <td>${esc(document.updatedAt || "—")}</td>
+      <td><span class="status ${document.status === "inactive" ? "off" : ""}">${document.status === "inactive" ? "未发布" : "已发布"}</span></td>
+      <td><div class="row-actions"><button class="text-action" data-action="edit-legal" data-id="${esc(document.id)}">编辑内容</button><button class="text-action" data-action="toggle-legal" data-id="${esc(document.id)}">${document.status === "inactive" ? "发布" : "下线"}</button></div></td>
+    </tr>`).join("");
+    const actions = `<button class="admin-btn primary" data-action="add-legal">${icon("plus")}新增协议规则</button>`;
+    root.innerHTML = adminShell("legal", `${pageHead("协议与规则", "维护小程序展示的隐私声明、商城协议及业务规则，发布后实时同步。", actions)}
+      <div class="stats-row">
+        ${stat("协议与规则", state.legalDocuments.length, "所有版本均在本地演示数据中维护")}
+        ${stat("已发布", activeCount, "用户端可查看")}
+        ${stat("已下线", state.legalDocuments.length - activeCount, "下线内容不在小程序展示")}
+        ${stat("同步状态", "实时", "保存后前台读取最新内容")}
+      </div>
+      <section class="panel">
+        <div class="panel-head"><span class="panel-title">文档列表</span><span class="panel-note">支持编辑、发布与下线</span></div>
+        <div class="table-wrap"><table class="admin-table"><thead><tr><th>文档名称</th><th>分类</th><th>版本</th><th>更新时间</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows || `<tr><td colspan="6"><div class="admin-empty">暂无协议文档</div></td></tr>`}</tbody></table></div>
+      </section>
+      <div class="inline-help">正式上线前请由法务审核条款，并在发布前确认版本、生效时间及用户告知方式。</div>`);
+  }
+
+  function legalDocumentForm(document = null) {
+    const editing = Boolean(document);
+    const item = document || { id: `LEGAL-${Date.now()}`, title: "", category: "商城规则", version: "v1.0", content: "", status: "active" };
+    const backdrop = openModal(editing ? "编辑协议与规则" : "新增协议与规则", `<form id="legal-document-form">
+      <div class="form-grid">
+        <label class="field">文档名称<input name="title" required maxlength="60" value="${esc(item.title)}" placeholder="如：隐私声明"></label>
+        <label class="field">分类<input name="category" required maxlength="30" value="${esc(item.category || "")}" placeholder="隐私政策 / 服务协议 / 业务规则"></label>
+        <label class="field">版本号<input name="version" required maxlength="20" value="${esc(item.version || "v1.0")}"></label>
+        <label class="field">更新时间<input name="updatedAt" type="date" value="${esc(item.updatedAt || new Date().toISOString().slice(0, 10))}"></label>
+        <label class="field" style="grid-column:1/-1">协议正文<textarea name="content" rows="10" maxlength="10000" required placeholder="请输入经过审核的协议或规则内容">${esc(item.content || "")}</textarea></label>
+      </div>
+    </form>`, `<button type="button" class="secondary-btn" data-modal-close>取消</button><button type="button" class="primary-btn small" data-action="save-legal" data-id="${esc(item.id)}">保存${editing ? "修改" : "并发布"}</button>`);
+    backdrop.querySelector("[data-action='save-legal']")?.addEventListener("click", () => {
+      const form = backdrop.querySelector("#legal-document-form");
+      if (!form.reportValidity()) return;
+      const values = new FormData(form);
+      state = read();
+      state.legalDocuments ||= [];
+      const next = {
+        ...item,
+        title: String(values.get("title") || "").trim(),
+        category: String(values.get("category") || "").trim(),
+        version: String(values.get("version") || "").trim(),
+        updatedAt: String(values.get("updatedAt") || new Date().toISOString().slice(0, 10)),
+        content: String(values.get("content") || "").trim(),
+        status: "active"
+      };
+      const index = state.legalDocuments.findIndex(entry => entry.id === item.id);
+      if (index >= 0) state.legalDocuments[index] = next;
+      else state.legalDocuments.unshift(next);
+      write(state);
+      closeModal();
+      renderLegalDocuments();
+      toast("协议内容已保存并发布到小程序");
+    });
+  }
+
   function renderMembership() {
     state = read();
     const tiers = [...state.tiers].sort((a, b) => a.points - b.points);
@@ -458,6 +522,18 @@
     const id = control.dataset.id;
     if (action === "reply-review") {
       replyReviewForm(id);
+    } else if (action === "add-legal") {
+      legalDocumentForm();
+    } else if (action === "edit-legal") {
+      legalDocumentForm(state.legalDocuments.find(item => item.id === id));
+    } else if (action === "toggle-legal") {
+      const document = state.legalDocuments.find(item => item.id === id);
+      if (!document) return;
+      document.status = document.status === "inactive" ? "active" : "inactive";
+      document.updatedAt = new Date().toISOString().slice(0, 10);
+      write(state);
+      renderLegalDocuments();
+      toast(document.status === "active" ? "协议已发布" : "协议已下线");
     } else if (action === "remove-sku") {
       control.closest("[data-sku-row]")?.remove();
     } else if (action === "preview-product") {
@@ -519,10 +595,12 @@
     if (root.dataset.page === "products") view === "reviews" ? renderReviews() : renderProducts();
     else if (root.dataset.page === "membership") renderMembership();
     else if (root.dataset.page === "banners") renderBanners();
+    else if (root.dataset.page === "legal") renderLegalDocuments();
   });
 
   const page = root.dataset.page;
   if (page === "products") view === "reviews" ? renderReviews() : renderProducts();
   else if (page === "membership") renderMembership();
   else if (page === "banners") renderBanners();
+  else if (page === "legal") renderLegalDocuments();
 })();

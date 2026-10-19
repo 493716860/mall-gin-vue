@@ -134,7 +134,8 @@
       ["users", "用户管理", "user", "admin-users.html"],
       ["products", "商品管理", "box", "admin-products.html"],
       ["membership", "会员等级", "member", "admin-membership.html"],
-      ["banners", "Banner 与专区", "image", "admin-banner-zones.html"]
+      ["banners", "Banner 与专区", "image", "admin-banner-zones.html"],
+      ["legal", "协议与规则", "file", "admin-legal.html"]
     ];
     return `<div class="admin-shell">
       <aside class="admin-sidebar">
