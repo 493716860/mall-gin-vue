@@ -220,6 +220,24 @@
         paymentMethod: "微信支付",
         remark: "",
         afterSaleId: "AS202610190001"
+      },
+      {
+        id: "M202610120026",
+        userId: "u1003",
+        status: "completed",
+        createdAt: "2026-10-12 14:10",
+        paidAt: "2026-10-12 14:16",
+        receivedAt: "2026-10-15 18:30",
+        address: { name: "陈小姐", phone: "136****9028", text: "杭州市西湖区文三路 188 号" },
+        items: [{ productId: "p02", name: "Xiaomi Buds 5 Pro", image: image("Minimal white wireless earbuds and compact charging case, premium studio product photography, soft white background, no text"), price: 1299, qty: 2 }],
+        subtotal: 2598,
+        discount: 0,
+        shippingFee: 0,
+        total: 2598,
+        paymentMethod: "微信支付",
+        remark: "",
+        referralSnapshot: { promoterIds: ["u1001"], sourceTokenId: "SH-CHEN-01", channel: "poster", boundAtOrder: false, ruleVersion: "CR-2026-03" },
+        commissionSnapshot: [{ promoterId: "u1001", relationId: "RR-1003", level: 1, basis: 2598, rate: 5, amount: 129.9, tierId: "silver", ruleVersion: "CR-2026-03", shareTokenId: "SH-CHEN-01" }]
       }
     ],
     afterSales: [
@@ -252,15 +270,78 @@
     ],
     groupParticipations: [{ id: "GP01", dealId: "GD01", groupCode: "T8K2", joined: 2, target: 3, status: "assembling", createdAt: "2026-10-19 09:42" }],
     commissions: [
-      { id: "CM001", orderId: "M202610150012", userId: "u1001", amount: 19.6, status: "settled", createdAt: "2026-10-17 18:10" },
-      { id: "CM002", orderId: "M202610180024", userId: "u1001", amount: 64.95, status: "pending", createdAt: "2026-10-18 16:24" }
+      { id: "CM001", orderId: "M202610150012", userId: "u1001", amount: 19.6, originalAmount: 19.6, basis: 392, level: 1, rate: 5, ruleVersion: "CR-2026-03", status: "frozen", createdAt: "2026-10-17 18:10", releaseAt: "2026-10-24 18:10" },
+      { id: "CM002", orderId: "M202610180024", userId: "u1001", amount: 64.95, originalAmount: 64.95, basis: 1299, level: 1, rate: 5, ruleVersion: "CR-2026-03", status: "pending", createdAt: "2026-10-18 16:24" },
+      { id: "CM003", orderId: "M202610120026", userId: "u1001", amount: 129.9, originalAmount: 129.9, basis: 2598, level: 1, rate: 5, ruleVersion: "CR-2026-03", status: "available", createdAt: "2026-10-15 18:30", releasedAt: "2026-10-18 09:00" }
     ],
     withdrawals: [],
+    promoterApplications: [
+      { id: "PA-260018", userId: "u1002", status: "pending", motivation: "长期分享数码产品，希望申请品牌推广员", createdAt: "2026-10-19 09:42" }
+    ],
+    promoterProfiles: [
+      { userId: "u1001", status: "active", tierId: "silver", approvedAt: "2025-06-02", referralCode: "LIN2680", riskStatus: "normal", selfPurchaseEnabled: false },
+      { userId: "u1003", status: "active", tierId: "standard", approvedAt: "2026-02-18", referralCode: "CHEN9028", riskStatus: "normal", selfPurchaseEnabled: false },
+      { userId: "u1004", status: "active", tierId: "standard", approvedAt: "2026-08-05", referralCode: "U10045519", riskStatus: "normal", selfPurchaseEnabled: false }
+    ],
+    promoterStatusHistory: [
+      { id: "PSH-001", userId: "u1001", fromStatus: "not_promoter", toStatus: "active", reason: "首批合作推广员", actor: "林运营", createdAt: "2025-06-02 10:00" }
+    ],
+    referralRelations: [
+      { id: "RR-1003", promoterId: "u1001", memberId: "u1003", status: "active", boundAt: "2026-02-18 14:20", sourceTokenId: "SH-LIN-01", channel: "wechat_friend", bindType: "first_bind" },
+      { id: "RR-1004", promoterId: "u1003", memberId: "u1004", status: "active", boundAt: "2026-03-02 11:16", sourceTokenId: "SH-CHEN-01", channel: "poster", bindType: "first_bind" },
+      { id: "RR-1005", promoterId: "u1004", memberId: "u1005", status: "active", boundAt: "2026-08-05 17:35", sourceTokenId: "SH-U1004-01", channel: "wechat_moments", bindType: "first_bind" }
+    ],
+    shareTokens: [
+      { id: "SH-LIN-01", token: "tkn_L8mQ2a", promoterId: "u1001", productId: "p01", channel: "wechat_friend", status: "active", createdAt: "2026-10-18 10:12", expiresAt: "2026-11-18 10:12", version: 1 },
+      { id: "SH-CHEN-01", token: "tkn_C3vP7n", promoterId: "u1003", productId: "p06", channel: "poster", status: "active", createdAt: "2026-10-17 15:30", expiresAt: "2026-11-17 15:30", version: 1 },
+      { id: "SH-U1004-01", token: "tkn_U4kR9x", promoterId: "u1004", productId: "", channel: "wechat_moments", status: "active", createdAt: "2026-08-05 17:40", expiresAt: "2026-11-05 17:40", version: 1 }
+    ],
+    shareEvents: [
+      { id: "SE-901", tokenId: "SH-LIN-01", promoterId: "u1001", productId: "p01", channel: "wechat_friend", event: "order_paid", orderId: "M202610150012", visitorKey: "anon_71a2", createdAt: "2026-10-15 09:22" },
+      { id: "SE-902", tokenId: "SH-LIN-01", promoterId: "u1001", productId: "p01", channel: "wechat_friend", event: "landing_view", visitorKey: "anon_88c1", createdAt: "2026-10-19 10:05" }
+    ],
+    distributionTiers: [
+      { id: "standard", name: "普通推广员", sort: 1, conditions: [{ metric: "sales", op: ">=", value: 0 }], combination: "AND", period: "近90日", status: "active" },
+      { id: "silver", name: "银牌推广员", sort: 2, conditions: [{ metric: "sales", op: ">=", value: 10000 }, { metric: "newMembers", op: ">=", value: 10 }], combination: "AND", period: "近90日", status: "active" },
+      { id: "gold", name: "金牌推广员", sort: 3, conditions: [{ metric: "sales", op: ">=", value: 50000 }, { metric: "newMembers", op: ">=", value: 30 }], combination: "AND", period: "近90日", status: "active" }
+    ],
+    tierRuleVersion: "TR-2026-04",
+    tierRuleVersions: [
+      { id: "TR-2026-04", name: "推广员成长规则", status: "active", effectiveAt: "2026-10-01 00:00", createdAt: "2026-09-25 16:00", note: "统计近90日有效销售额与有效拉新", tiers: [] },
+      { id: "TR-2026-03", name: "夏季推广员成长规则", status: "archived", effectiveAt: "2026-07-01 00:00", createdAt: "2026-06-20 10:00", note: "历史规则只读", tiers: [] }
+    ],
+    commissionRuleVersions: [
+      { id: "CR-2026-03", name: "秋季分销政策", status: "active", effectiveAt: "2026-10-01 00:00", createdAt: "2026-09-25 16:00", tiers: { standard: [5, 2, 1], silver: [6, 2.5, 1.2], gold: [7, 3, 1.5] }, scope: "全场商品", note: "按订单商品实付净额计佣，不含运费" },
+      { id: "CR-2026-02", name: "夏季分销政策", status: "archived", effectiveAt: "2026-07-01 00:00", createdAt: "2026-06-20 10:00", tiers: { standard: [4, 1.5, 0.5], silver: [5, 2, 1], gold: [6, 2.5, 1.2] }, scope: "全场商品", note: "历史快照只读" }
+    ],
+    commissionLedger: [
+      { id: "CL-001", commissionId: "CM001", userId: "u1001", type: "commission_accrued", amount: 19.6, direction: "credit", orderId: "M202610150012", level: 1, ruleVersion: "CR-2026-03", idempotencyKey: "order:M202610150012:u1001:1", createdAt: "2026-10-17 18:10" },
+      { id: "CL-002", commissionId: "CM001", userId: "u1001", type: "commission_frozen", amount: 19.6, direction: "credit", orderId: "M202610150012", level: 1, ruleVersion: "CR-2026-03", idempotencyKey: "freeze:CM001", createdAt: "2026-10-17 18:10" },
+      { id: "CL-003", commissionId: "CM002", userId: "u1001", type: "commission_accrued", amount: 64.95, direction: "credit", orderId: "M202610180024", level: 1, ruleVersion: "CR-2026-03", idempotencyKey: "order:M202610180024:u1001:1", createdAt: "2026-10-18 16:24" },
+      { id: "CL-004", commissionId: "CM003", userId: "u1001", type: "commission_accrued", amount: 129.9, direction: "credit", orderId: "M202610120026", level: 1, ruleVersion: "CR-2026-03", idempotencyKey: "order:M202610120026:u1001:1", createdAt: "2026-10-15 18:30" },
+      { id: "CL-005", commissionId: "CM003", userId: "u1001", type: "commission_released", amount: 129.9, direction: "credit", orderId: "M202610120026", level: 1, ruleVersion: "CR-2026-03", idempotencyKey: "release:CM003", createdAt: "2026-10-18 09:00" }
+    ],
+    payoutChannels: [
+      { id: "PC-WX-01", userId: "u1001", type: "wechat_merchant", label: "微信商户出款", maskedAccount: "林* · 微信实名", tokenRef: "payout_token_demo_01", verified: true, status: "active", verifiedAt: "2026-09-20" },
+      { id: "PC-BANK-01", userId: "u1001", type: "bank_transfer", label: "人工银行转账", maskedAccount: "招商银行 · 尾号 6218", tokenRef: "secure_ref_demo_01", verified: true, status: "active", verifiedAt: "2026-09-20" }
+    ],
+    payoutAttempts: [],
+    distributionRiskCases: [
+      { id: "DR-0081", userId: "u1003", type: "high_frequency", level: "medium", status: "reviewing", summary: "短时分享访问与注册转化偏高，待人工核验", createdAt: "2026-10-19 08:55", source: "risk_rule:R-04" }
+    ],
+    tierEvaluations: [
+      { id: "TE-202610-01", userId: "u1001", tierId: "silver", ruleVersion: "TIER-2026-04", period: "近90日", result: "matched", reason: "有效销售额与有效拉新人数均达标", evaluatedAt: "2026-10-01 02:00" }
+    ],
+    distributionAudit: [
+      { id: "DA-001", actor: "林运营", action: "promoter.approve", targetId: "u1001", reason: "首批合作推广员", createdAt: "2025-06-02 10:00" },
+      { id: "DA-002", actor: "系统任务", action: "commission.rule.publish", targetId: "CR-2026-03", reason: "版本发布，历史订单快照不变", createdAt: "2026-10-01 00:00" }
+    ],
+    distributionSettings: { maxLevels: 3, freezeDays: 7, minimumPayout: 100, singlePayoutLimit: 5000, dailyPayoutLimit: 10000, autoReviewThreshold: 300, highRiskManualReview: true, payoutChannels: ["wechat_merchant", "bank_transfer"], pendingConfirm: true },
     users: [
       { id: "u1001", name: "林间有风", phone: "138****6218", tier: "银卡会员", points: 2680, orders: 12, spend: 8326, distributor: true, status: "active", joinedAt: "2025-04-18" },
       { id: "u1002", name: "周先生", phone: "139****2701", tier: "金卡会员", points: 7380, orders: 26, spend: 18220, distributor: false, status: "active", joinedAt: "2024-12-03" },
       { id: "u1003", name: "陈小姐", phone: "136****9028", tier: "普通会员", points: 620, orders: 3, spend: 890, distributor: true, status: "active", joinedAt: "2026-02-16" },
-      { id: "u1004", name: "许同学", phone: "137****5519", tier: "银卡会员", points: 1640, orders: 8, spend: 3980, distributor: false, status: "active", joinedAt: "2025-08-22" },
+      { id: "u1004", name: "许同学", phone: "137****5519", tier: "银卡会员", points: 1640, orders: 8, spend: 3980, distributor: true, status: "active", joinedAt: "2025-08-22" },
       { id: "u1005", name: "赵女士", phone: "158****1162", tier: "普通会员", points: 180, orders: 1, spend: 299, distributor: false, status: "disabled", joinedAt: "2026-08-05" }
     ],
     carriers: [

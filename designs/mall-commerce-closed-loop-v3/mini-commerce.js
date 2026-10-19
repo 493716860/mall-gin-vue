@@ -111,7 +111,7 @@
     shell("分销中心", `<section class="white-card" style="padding:18px;background:#2c2c2c;color:#fff"><div style="font-size:10px;color:#bbb">可提现佣金</div><div style="margin-top:8px;font-size:28px;font-weight:700">${money(available)}</div><div style="margin-top:7px;font-size:10px;color:#bbb">邀请码 ${esc(state.user.referralCode)} · 订单完成后佣金结算</div><button class="primary-btn small" style="margin-top:14px" data-action="withdraw">申请提现</button></section>
       <section class="section white-card" style="padding:12px"><div class="section-head"><h2>佣金明细</h2><span class="cart-spec">待结算 ${money(commissions.filter(item => item.status === "pending").reduce((sum, item) => sum + Number(item.amount), 0))}</span></div>${rows || `<div class="cart-spec">暂无佣金记录</div>`}</section>
       <section class="section white-card" style="padding:12px"><div class="section-head"><h2>提现记录</h2></div>${history || `<div class="cart-spec">暂无提现记录</div>`}</section>
-      <div class="mini-notice">分享链接可附加 ?ref=${encodeURIComponent(state.user.id)}；退款订单的佣金会同步取消</div>`);
+      <div class="mini-notice">请在分销中心生成分享码；只有有效推广员分享码可建立首次归属。退款将按佣金状态冲减或转人工处理。</div>`);
   }
 
   root.addEventListener("click", event => {

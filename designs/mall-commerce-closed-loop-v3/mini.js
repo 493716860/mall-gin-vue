@@ -9,6 +9,23 @@
   let activeZoneFilter = "all";
   let carouselTimer;
 
+  function captureShareLanding() {
+    const shareToken = params.get("share");
+    if (!shareToken) return;
+    const visitorKey = sessionStorage.getItem("mall-share-visitor")
+      || `anon_${Math.random().toString(36).slice(2, 10)}`;
+    sessionStorage.setItem("mall-share-visitor", visitorKey);
+    try {
+      state = read();
+      window.MallOps.resolveShareToken(state, shareToken, state.user.id, { bind: true });
+      write(state);
+      window.MallOps.recordShareEvent(shareToken, "landing_view", visitorKey);
+      sessionStorage.setItem("mall-pending-share-token", shareToken);
+    } catch {
+      sessionStorage.removeItem("mall-pending-share-token");
+    }
+  }
+
   const tagNames = { top: "畅销", new: "新品", recommend: "推荐" };
   const zoneById = id => state.zones.find(zone => zone.id === id);
   const productById = id => state.products.find(product => product.id === id);
@@ -383,8 +400,9 @@
           address: { name: state.user.name, phone: state.user.phone, text: addressText },
           couponId: document.getElementById("checkout-coupon")?.value || "",
           remark: document.getElementById("checkout-remark")?.value.trim() || "",
-          referrerId: new URLSearchParams(location.search).get("ref") || ""
+          shareTokenId: sessionStorage.getItem("mall-pending-share-token") || params.get("share") || ""
         });
+        sessionStorage.removeItem("mall-pending-share-token");
         state = read();
         state.cart = state.cart.filter(item => !selected.some(row => row.productId === item.productId));
         write(state);
@@ -406,6 +424,7 @@
   });
 
   const page = root.dataset.page;
+  captureShareLanding();
   if (page === "home") renderHome();
   else if (page === "membership") renderMembership();
   else if (page === "cart") renderCart();
