@@ -520,7 +520,13 @@
   function renderSettings() {
     state = read();
     renderAccountPage("设置", `
-      <div class="account-page-intro settings-page-intro"><span class="account-eyebrow">PREFERENCES</span><strong>账号与隐私</strong><span>管理登录、安全与信息使用偏好</span></div>
+      <div class="account-page-intro settings-page-intro"><span class="account-eyebrow">PREFERENCES</span><strong>个人设置</strong><span>管理个人资料、账号安全与隐私偏好</span></div>
+      <section class="settings-section">
+        <div class="settings-section-heading"><strong>个人信息</strong><span>PROFILE</span></div>
+        <div class="settings-card">
+          <a class="account-menu-row" href="mini-profile.html?view=personal"><span class="settings-row-icon">${icon("member")}</span><span class="settings-row-copy"><strong>${esc(state.user.name || "完善个人信息")}</strong><small>${esc(maskedPhone(state.user.phone || "尚未绑定手机号"))} · 基本资料与宠物档案</small></span>${icon("chevron")}</a>
+        </div>
+      </section>
       <section class="settings-section">
         <div class="settings-section-heading"><strong>账号与安全</strong><span>ACCOUNT</span></div>
         <div class="settings-card">
