@@ -38,11 +38,15 @@
     state = read();
     const filters = [["all", "全部"], ["pending_payment", "待付款"], ["to_ship", "待发货"], ["to_receive", "待收货"], ["pending-review", "待评价"], ["completed", "已完成"], ["after-sale", "退款/售后"]];
     const userOrders = state.orders.filter(order => order.userId === state.user.id);
+    const pendingReviewCount = userOrders
+      .filter(order => order.status === "completed")
+      .reduce((count, order) => count + order.items.filter(item => !item.reviewId).length, 0);
     const orders = userOrders.filter(order => filter === "all"
       || (filter === "after-sale" ? Boolean(order.afterSaleId) || order.status === "refunded"
         : filter === "pending-review" ? order.status === "completed" && order.items.some(item => !item.reviewId)
           : order.status === filter));
-    shell("我的订单", `<div class="toolbar-row">${filters.map(([value, label]) => `<button class="filter-chip ${filter === value ? "active" : ""}" data-action="filter" data-value="${value}">${label}</button>`).join("")}</div>
+    shell("我的订单", `${pendingReviewCount ? `<a class="review-pending-banner" href="mini-orders.html?status=pending-review"><span class="review-pending-icon">${icon("chat")}</span><span class="review-pending-copy"><strong>还有 ${pendingReviewCount} 件商品待评价</strong><small>分享真实体验，帮助其他用户做选择</small></span><span class="review-pending-cta">立即评价 ${icon("chevron")}</span></a>` : ""}
+      <div class="toolbar-row">${filters.map(([value, label]) => `<button class="filter-chip ${filter === value ? "active" : ""}" data-action="filter" data-value="${value}">${label}</button>`).join("")}</div>
       ${orders.length ? orders.map(order => {
         const ticket = state.afterSales.find(item => item.id === order.afterSaleId);
         const items = order.items.map((item, itemIndex) => `<div class="order-item"><div class="cart-row" style="grid-template-columns:58px 1fr;padding:10px 0">
@@ -65,7 +69,9 @@
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:9px;border-top:1px solid #f1f1f1"><span class="cart-spec">${esc(order.createdAt || "")}</span><strong style="font-size:12px">实付 ${money(order.total)}</strong></div>
           ${actions ? `<div style="display:flex;justify-content:flex-end;gap:7px;margin-top:10px">${actions}</div>` : ""}
         </article>`;
-      }).join("") : `<div class="empty-state" style="min-height:300px"><strong>暂无相关订单</strong><p>去商城发现适合你的好物</p><a class="primary-btn small" href="mini-shop.html">去逛逛</a></div>`}
+      }).join("") : filter === "pending-review"
+        ? `<div class="empty-state" style="min-height:300px"><strong>暂无待评价商品</strong><p>已完成评价的商品会显示在“已完成”订单中</p><a class="secondary-btn" href="mini-orders.html?status=completed">查看已完成订单</a></div>`
+        : `<div class="empty-state" style="min-height:300px"><strong>暂无相关订单</strong><p>去商城发现适合你的好物</p><a class="primary-btn small" href="mini-shop.html">去逛逛</a></div>`}
       <div class="mini-notice">订单与运营后台共享演示数据 · 支付和物流均为模拟</div>`);
   }
 

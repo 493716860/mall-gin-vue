@@ -274,6 +274,26 @@
         afterSaleId: "AS202610190001"
       },
       {
+        id: "M202610140006",
+        userId: "u1001",
+        status: "completed",
+        createdAt: "2026-10-14 10:26",
+        paidAt: "2026-10-14 10:31",
+        shippedAt: "2026-10-14 15:08",
+        receivedAt: "2026-10-16 17:42",
+        address: { name: "林女士", phone: "138****6218", text: "上海市徐汇区漕溪北路 88 号" },
+        items: [{ productId: "p06", name: "云南高山挂耳咖啡", image: image("Coffee pouch and cup on cream studio background, no text"), price: 59, qty: 1 }],
+        subtotal: 59,
+        discount: 0,
+        shippingFee: 0,
+        total: 59,
+        carrier: "中通快递",
+        trackingNo: "ZTO881026101426",
+        tracking: [{ time: "10-16 17:42", text: "已签收，感谢使用中通快递", place: "上海" }],
+        paymentMethod: "微信支付",
+        remark: ""
+      },
+      {
         id: "M202610120026",
         userId: "u1003",
         status: "completed",
@@ -472,6 +492,11 @@
       }
       const parsed = JSON.parse(stored);
       const state = { ...JSON.parse(JSON.stringify(defaults)), ...parsed };
+      state.orders ||= [];
+      if (!state.orders.some(order => order.id === "M202610140006")) {
+        const reviewDemoOrder = defaults.orders.find(order => order.id === "M202610140006");
+        state.orders.push(JSON.parse(JSON.stringify(reviewDemoOrder)));
+      }
       state.products = (state.products || []).map((product, index) => {
         const fallback = defaults.products.find(item => item.id === product.id) || defaults.products[index];
         const gallery = product.gallery?.length ? product.gallery : fallback?.gallery || [product.image].filter(Boolean);

@@ -352,6 +352,9 @@
   function renderProfile() {
     state = read();
     const tier = currentTier();
+    const pendingReviewCount = state.orders
+      .filter(order => order.userId === state.user.id && order.status === "completed")
+      .reduce((count, order) => count + order.items.filter(item => !item.reviewId).length, 0);
     miniShell({
       active: "profile",
       header: `<div class="mini-head-row"><span class="mini-title">我的</span><a href="#settings" data-action="profile-item" data-title="设置" class="head-link">${icon("settings")}</a></div>`,
@@ -364,7 +367,7 @@
         <section class="white-card" style="padding:13px 9px 10px">
           <div class="section-head" style="padding:0 5px"><h2 style="font-size:13px">我的订单</h2><a href="mini-orders.html">全部订单 ${icon("chevron")}</a></div>
           <div class="profile-quick">
-            ${[["待付款","bag","pending_payment"],["待发货","box","to_ship"],["待收货","truck","to_receive"],["待评价","chat","pending-review"],["退款/售后","service","after-sale"]].map(([label, glyph, status]) => `<a href="mini-orders.html?status=${status}" class="order-shortcut">${icon(glyph)}<span>${label}</span></a>`).join("")}
+            ${[["待付款","bag","pending_payment"],["待发货","box","to_ship"],["待收货","truck","to_receive"],["待评价","chat","pending-review"],["退款/售后","service","after-sale"]].map(([label, glyph, status]) => `<a href="mini-orders.html?status=${status}" class="order-shortcut">${icon(glyph)}${status === "pending-review" && pendingReviewCount ? `<span class="order-shortcut-count">${pendingReviewCount > 99 ? "99+" : pendingReviewCount}</span>` : ""}<span>${label}</span></a>`).join("")}
           </div>
         </section>
         <section class="section white-card" style="padding:2px 13px">
