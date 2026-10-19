@@ -397,13 +397,15 @@
     return months >= 12 ? `${Math.floor(months / 12)} 岁${months % 12 ? ` ${months % 12} 个月` : ""}` : `${months} 个月`;
   }
 
-  function renderAccountPage(title, content, backView = "settings") {
+  function renderAccountPage(title, content, backView = "settings", pageClass = "") {
     const backUrl = backView === "profile" ? "mini-profile.html" : `mini-profile.html?view=${encodeURIComponent(backView)}`;
+    const settingsAction = title === "设置" ? "" : `<a class="head-link" href="mini-profile.html?view=settings" aria-label="设置">${icon("settings")}</a>`;
     miniShell({
       active: "profile",
-      header: `<div class="mini-head-row"><a class="head-link" href="${backUrl}" aria-label="返回">${icon("chevron")}</a><span class="mini-title">${esc(title)}</span><a class="head-link" href="mini-profile.html?view=settings" aria-label="设置">${icon("settings")}</a></div>`,
-      content: `<div class="mini-content account-page">${content}</div>`
+      header: `<div class="mini-head-row"><a class="head-link" href="${backUrl}" aria-label="返回">${icon("chevron")}</a><span class="mini-title">${esc(title)}</span>${settingsAction}</div>`,
+      content: `<div class="mini-content account-page ${pageClass}">${content}</div>`
     });
+    root.querySelector(".mini-shell")?.classList.add("account-shell");
   }
 
   function navigateProfileView(view) {
@@ -420,40 +422,48 @@
     const user = state.user;
     user.pets ||= [];
     const region = [user.province, user.city, user.district].filter(Boolean).join(" ");
-    const pets = user.pets.map(pet => `<article class="pet-editor-card">
+    const pets = user.pets.map(pet => `<article class="pet-editor-card pet-profile-card">
       <form class="pet-editor-form" data-pet-id="${esc(pet.id)}">
-        <div class="pet-editor-head"><span><strong>${esc(pet.name || "新宠物")}</strong><small>${esc(pet.kind || "宠物")} · ${esc(pet.breed || "品种待完善")} · ${esc(petAge(pet.birthday))}</small></span><button type="button" class="text-action" data-action="pet-delete" data-id="${esc(pet.id)}">删除</button></div>
-        <div class="form-grid">
+        <div class="pet-editor-head">
+          <span class="pet-mark">${icon("heart")}</span>
+          <span class="pet-title-copy"><strong>${esc(pet.name || "新宠物")}</strong><small>${esc(pet.kind || "宠物")} · ${esc(pet.breed || "品种待完善")} · ${esc(petAge(pet.birthday))}</small></span>
+          <button type="button" class="text-action" data-action="pet-delete" data-id="${esc(pet.id)}">移除</button>
+        </div>
+        <div class="pet-profile-grid">
           <label class="field">宠物昵称<input name="name" required maxlength="20" value="${esc(pet.name || "")}" placeholder="如：团团"></label>
           <label class="field">宠物类型<select name="kind"><option ${pet.kind === "猫咪" ? "selected" : ""}>猫咪</option><option ${pet.kind === "狗狗" ? "selected" : ""}>狗狗</option><option ${pet.kind && !["猫咪", "狗狗"].includes(pet.kind) ? "selected" : ""}>其他</option></select></label>
           <label class="field">品种<input name="breed" maxlength="30" value="${esc(pet.breed || "")}" placeholder="如：英短"></label>
           <label class="field">生日<input name="birthday" type="date" value="${esc(pet.birthday || "")}"></label>
         </div>
-        <button class="secondary-btn pet-save-button" type="submit">保存宠物信息</button>
+        <button class="pet-save-button" type="submit">保存宠物档案 ${icon("arrow")}</button>
       </form>
     </article>`).join("");
     renderAccountPage("个人信息", `
-      <div class="account-page-intro"><strong>个人信息</strong><span>完善资料，让服务更贴合你的需要</span></div>
-      <section class="white-card account-section">
-        <div class="account-section-head"><strong>基本信息</strong><small>仅用于账号识别、配送与服务</small></div>
-        <form id="personal-info-form">
-          <div class="avatar-edit-row">${avatarMarkup(user, "avatar account-avatar")}<label class="secondary-btn avatar-upload-label">更换头像<input id="avatar-upload" type="file" accept="image/*" hidden></label><small>支持 JPG / PNG，最大 1 MB</small></div>
-          <div class="form-grid">
-            <label class="field">姓名<input name="name" required maxlength="30" value="${esc(user.name || "")}" placeholder="请输入姓名"></label>
-            <label class="field">性别<select name="gender"><option value="">请选择</option><option value="女" ${user.gender === "女" ? "selected" : ""}>女</option><option value="男" ${user.gender === "男" ? "selected" : ""}>男</option><option value="不便透露" ${user.gender === "不便透露" ? "selected" : ""}>不便透露</option></select></label>
-            <label class="field">生日<input name="birthday" type="date" value="${esc(user.birthday || "")}"></label>
-            <label class="field">所在地区<input name="region" value="${esc(region)}" placeholder="省 / 市 / 区"></label>
+      <div class="account-page-intro profile-page-intro"><span class="account-eyebrow">MY ACCOUNT</span><strong>个人资料</strong><span>管理你的账户信息与宠物档案</span></div>
+      <section class="account-section profile-details-card">
+        <div class="profile-identity-row">
+          ${avatarMarkup(user, "avatar account-avatar")}
+          <span class="profile-identity-copy"><strong>${esc(user.name || "商城用户")}</strong><small>${esc(maskedPhone(user.phone || "尚未绑定手机号"))}</small></span>
+          <label class="avatar-upload-label">更换头像<input id="avatar-upload" type="file" accept="image/*" hidden>${icon("edit")}</label>
+        </div>
+        <form id="personal-info-form" class="profile-info-form">
+          <div class="profile-form-heading"><strong>基本信息</strong><small>完善后用于账号识别与服务联系</small></div>
+          <div class="profile-data-list">
+            <label class="profile-data-row"><span>姓名</span><input name="name" required maxlength="30" value="${esc(user.name || "")}" placeholder="请输入姓名"></label>
+            <label class="profile-data-row"><span>性别</span><select name="gender"><option value="">请选择</option><option value="女" ${user.gender === "女" ? "selected" : ""}>女</option><option value="男" ${user.gender === "男" ? "selected" : ""}>男</option><option value="不便透露" ${user.gender === "不便透露" ? "selected" : ""}>不便透露</option></select></label>
+            <label class="profile-data-row"><span>生日</span><input name="birthday" type="date" value="${esc(user.birthday || "")}"></label>
+            <label class="profile-data-row"><span>所在地区</span><input name="region" value="${esc(region)}" placeholder="省 / 市 / 区"></label>
           </div>
-          <div class="account-phone-row"><span><small>手机号</small><strong>${esc(maskedPhone(user.phone || "未绑定"))}</strong></span><a class="secondary-btn" href="mini-profile.html?view=change-phone&back=personal">更换手机号</a></div>
-          <a class="account-address-link" href="mini-addresses.html"><span><strong>收货地址</strong><small>管理配送地址与默认地址</small></span><span>${state.addresses?.length || 0} 个地址　${icon("chevron")}</span></a>
-          <button class="primary-btn account-save-button" type="submit">保存基本信息</button>
+          <a class="account-address-link profile-address-link" href="mini-addresses.html"><span><strong>收货地址</strong><small>配送地址与默认地址</small></span><span>${state.addresses?.length || 0} 个地址 ${icon("chevron")}</span></a>
+          <div class="profile-form-footer"><small>手机号：${esc(maskedPhone(user.phone || "尚未绑定"))}</small><a href="mini-profile.html?view=change-phone&back=personal">更换 ${icon("arrow")}</a></div>
+          <button class="primary-btn account-save-button" type="submit">保存资料</button>
         </form>
       </section>
-      <section class="account-section">
-        <div class="account-section-head"><span><strong>我的宠物</strong><small>生日、品种与年龄信息</small></span><button type="button" class="secondary-btn" data-action="pet-add">＋ 添加宠物</button></div>
+      <section class="account-section pet-profile-section">
+        <div class="account-section-head"><span><small class="account-eyebrow">LIFE COMPANIONS</small><strong>宠物档案</strong><small>记录生日、品种与成长信息</small></span><button type="button" class="secondary-btn" data-action="pet-add">${icon("plus")} 添加</button></div>
         ${pets || `<div class="white-card account-empty">还没有宠物信息，点击“添加宠物”开始记录。</div>`}
       </section>
-      <p class="mini-notice">个人资料保存在当前浏览器的演示数据中。</p>`, "profile");
+      `, "profile", "personal-page");
 
     root.querySelector("#personal-info-form")?.addEventListener("submit", event => {
       event.preventDefault();
@@ -504,20 +514,24 @@
   function renderSettings() {
     state = read();
     renderAccountPage("设置", `
-      <div class="account-page-intro"><strong>账号与隐私设置</strong><span>管理登录、安全、授权与服务规则</span></div>
-      <section class="white-card account-menu-group">
-        <div class="account-menu-title">账号与安全</div>
-        <a class="account-menu-row" href="mini-profile.html?view=change-phone"><span><strong>更换手机号</strong><small>当前绑定：${esc(maskedPhone(state.user.phone || "未绑定"))}</small></span>${icon("chevron")}</a>
-        <a class="account-menu-row" href="mini-profile.html?view=set-password"><span><strong>设置登录密码</strong><small>定期更新密码，保护账号安全</small></span>${icon("chevron")}</a>
-        <a class="account-menu-row" href="mini-profile.html?view=permissions"><span><strong>授权管理</strong><small>管理位置、相机、相册与通知权限</small></span>${icon("chevron")}</a>
-        <a class="account-menu-row" href="mini-profile.html?view=security"><span><strong>安全中心</strong><small>实名认证、账号注销与常见问题</small></span>${icon("chevron")}</a>
+      <div class="account-page-intro settings-page-intro"><span class="account-eyebrow">PREFERENCES</span><strong>账号与隐私</strong><span>管理登录、安全与信息使用偏好</span></div>
+      <section class="settings-section">
+        <div class="settings-section-heading"><strong>账号与安全</strong><span>ACCOUNT</span></div>
+        <div class="settings-card">
+          <a class="account-menu-row" href="mini-profile.html?view=change-phone"><span class="settings-row-icon">${icon("phone")}</span><span class="settings-row-copy"><strong>手机号</strong><small>${esc(maskedPhone(state.user.phone || "尚未绑定"))}</small></span>${icon("chevron")}</a>
+          <a class="account-menu-row" href="mini-profile.html?view=set-password"><span class="settings-row-icon">${icon("settings")}</span><span class="settings-row-copy"><strong>登录密码</strong><small>${state.user.passwordConfigured ? `最近更新 ${esc(state.user.passwordUpdatedAt || "—")}` : "尚未设置"}</small></span>${icon("chevron")}</a>
+          <a class="account-menu-row" href="mini-profile.html?view=permissions"><span class="settings-row-icon">${icon("service")}</span><span class="settings-row-copy"><strong>授权管理</strong><small>位置、相机、相册与消息通知</small></span>${icon("chevron")}</a>
+          <a class="account-menu-row" href="mini-profile.html?view=security"><span class="settings-row-icon">${icon("member")}</span><span class="settings-row-copy"><strong>安全中心</strong><small>实名认证、注销与常见问题</small></span>${icon("chevron")}</a>
+        </div>
       </section>
-      <section class="white-card account-menu-group">
-        <div class="account-menu-title">协议与隐私</div>
-        <a class="account-menu-row" href="mini-profile.html?view=legal"><span><strong>协议与规则</strong><small>隐私声明、商城协议、会员及售后规则</small></span>${icon("chevron")}</a>
-        <a class="account-menu-row" href="mini-profile.html?view=collection"><span><strong>个人信息收集清单</strong><small>查看信息类别、用途与使用场景</small></span>${icon("chevron")}</a>
+      <section class="settings-section">
+        <div class="settings-section-heading"><strong>协议与隐私</strong><span>PRIVACY</span></div>
+        <div class="settings-card">
+          <a class="account-menu-row" href="mini-profile.html?view=legal"><span class="settings-row-icon">${icon("file")}</span><span class="settings-row-copy"><strong>协议与规则</strong><small>隐私声明、商城协议与服务规则</small></span>${icon("chevron")}</a>
+          <a class="account-menu-row" href="mini-profile.html?view=collection"><span class="settings-row-icon">${icon("order")}</span><span class="settings-row-copy"><strong>个人信息收集清单</strong><small>了解信息类别与使用目的</small></span>${icon("chevron")}</a>
+        </div>
       </section>
-      <p class="mini-notice">账号、安全与协议设置为本地交互演示，不连接真实身份或认证服务。</p>`);
+      <p class="settings-footnote">账号设置仅在本地演示环境保存，不连接真实认证服务。</p>`, "profile", "settings-page");
   }
 
   function renderPermissions() {

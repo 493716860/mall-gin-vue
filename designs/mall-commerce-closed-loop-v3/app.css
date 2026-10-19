@@ -837,3 +837,130 @@ img { display: block; max-width: 100%; }
   .sku-editor-row { grid-template-columns: repeat(2,minmax(0,1fr)); padding: 10px 31px 10px 9px; }
   .sku-editor-row .field:first-child { grid-column: 1/-1; }
 }
+
+/* Warm, editorial account surfaces */
+.account-shell {
+  --account-bg: #f4f1eb;
+  --account-surface: #fffdfa;
+  --account-ink: #292720;
+  --account-muted: #888477;
+  --account-line: #e9e4da;
+  --account-accent: #a95f3b;
+}
+.account-shell .mini-head,
+.account-shell .mini-main { background: var(--account-bg); }
+.account-shell .mini-head { padding: 13px 18px 10px; }
+.account-shell .mini-head-row { gap: 10px; }
+.account-shell .mini-title { margin-right: auto; color: var(--account-ink); font-size: 16px; font-weight: 620; letter-spacing: -.2px; }
+.account-shell .mini-head-row > a.head-link:first-child { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid #e5dfd4; border-radius: 50%; color: #625e55; background: rgba(255,253,250,.72); }
+.account-shell .mini-head-row > a.head-link[aria-label="设置"] { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid #e5dfd4; border-radius: 50%; color: #625e55; background: rgba(255,253,250,.72); }
+.account-shell .mini-message-entry { width: 30px; height: 30px; margin-left: 0; border: 1px solid #e5dfd4; color: #625e55; background: rgba(255,253,250,.72); }
+.account-page { gap: 17px; padding: 14px 17px 24px; color: var(--account-ink); background: var(--account-bg); }
+.account-page-intro { gap: 5px; padding: 1px 1px 3px; }
+.account-page-intro strong { color: var(--account-ink); font-size: 23px; font-weight: 620; letter-spacing: -.7px; line-height: 1.2; }
+.account-page-intro > span:last-child { color: var(--account-muted); font-size: 10px; line-height: 1.6; }
+.account-eyebrow { color: var(--account-accent); font-size: 8px; font-weight: 650; letter-spacing: 1.55px; }
+
+.profile-details-card { gap: 0; overflow: hidden; border: 1px solid var(--account-line); border-radius: 15px; padding: 0; background: var(--account-surface); box-shadow: 0 5px 20px rgba(74, 58, 38, .035); }
+.profile-identity-row { display: flex; align-items: center; gap: 12px; padding: 16px; border-bottom: 1px solid var(--account-line); background: #f9f6f0; }
+.profile-identity-row .account-avatar { width: 54px; height: 54px; border: 1px solid #e4d8c7; background: #e8dfd1; color: #73543d; font-size: 19px; }
+.profile-identity-copy { min-width: 0; display: grid; gap: 5px; }
+.profile-identity-copy strong { color: var(--account-ink); font-size: 14px; font-weight: 620; }
+.profile-identity-copy small { color: var(--account-muted); font-size: 10px; letter-spacing: .2px; }
+.avatar-upload-label { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; margin-left: auto; border: 1px solid #ddd5c8; border-radius: 16px; padding: 0 10px; color: #655c50; background: #fffdfa; font-size: 9px; }
+.avatar-upload-label svg { width: 12px; height: 12px; }
+.profile-info-form { display: grid; gap: 0; padding: 0 16px 15px; }
+.profile-form-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 15px 0 8px; }
+.profile-form-heading strong { color: var(--account-ink); font-size: 12px; font-weight: 620; }
+.profile-form-heading small { color: #9b9588; font-size: 8px; }
+.profile-data-list { display: grid; }
+.profile-data-row { min-height: 49px; display: grid; grid-template-columns: 66px minmax(0, 1fr); align-items: center; gap: 8px; border-bottom: 1px solid var(--account-line); color: var(--account-muted); font-size: 10px; }
+.profile-data-row input,
+.profile-data-row select { width: 100%; min-width: 0; border: 0; border-radius: 0; padding: 8px 0; outline: 0; color: var(--account-ink); background: transparent; font-size: 11px; text-align: right; }
+.profile-data-row input::placeholder { color: #b2ada3; }
+.profile-data-row input:focus,
+.profile-data-row select:focus { box-shadow: inset 0 -1px var(--account-accent); }
+.profile-data-row input[type="date"] { min-height: 36px; }
+.profile-address-link { min-height: 54px; border-top: 0; border-bottom: 1px solid var(--account-line); }
+.profile-address-link strong { color: var(--account-ink); font-size: 10px; }
+.profile-address-link small { color: #9b9588; font-size: 8px; }
+.profile-address-link > span:last-child { display: inline-flex; align-items: center; gap: 4px; color: var(--account-muted); font-size: 9px; }
+.profile-form-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 43px; }
+.profile-form-footer small { color: #9b9588; font-size: 9px; }
+.profile-form-footer a { display: inline-flex; align-items: center; gap: 4px; color: var(--account-accent); font-size: 9px; font-weight: 600; }
+.profile-form-footer svg { width: 12px; height: 12px; }
+.profile-info-form .account-save-button { min-height: 40px; margin-top: 1px; border-radius: 9px; background: var(--account-accent); font-size: 11px; letter-spacing: .3px; }
+.profile-info-form .account-save-button:active { background: #8d4f31; }
+
+.pet-profile-section { gap: 10px; padding: 0; }
+.pet-profile-section .account-section-head { align-items: center; padding: 0 1px 1px; }
+.pet-profile-section .account-section-head > span { gap: 4px; }
+.pet-profile-section .account-section-head > span > strong { color: var(--account-ink); font-size: 17px; font-weight: 620; letter-spacing: -.3px; }
+.pet-profile-section .account-section-head > span > small:last-child { color: var(--account-muted); font-size: 9px; }
+.pet-profile-section .account-section-head .secondary-btn { min-height: 31px; display: inline-flex; align-items: center; gap: 5px; border-color: #ded5c8; border-radius: 17px; padding: 0 11px; color: #62594e; background: #fffdfa; font-size: 9px; }
+.pet-profile-section .account-section-head .secondary-btn svg { width: 12px; height: 12px; }
+.pet-profile-card { border: 1px solid var(--account-line); border-radius: 14px; padding: 13px; background: var(--account-surface); box-shadow: 0 5px 18px rgba(74, 58, 38, .03); }
+.pet-profile-card .pet-editor-head { justify-content: flex-start; gap: 9px; padding-bottom: 11px; border-bottom: 1px solid var(--account-line); }
+.pet-mark { width: 34px; height: 34px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 11px; color: #a86e4e; background: #f2e9dc; }
+.pet-mark svg { width: 17px; height: 17px; stroke: currentColor; }
+.pet-profile-card .pet-title-copy { min-width: 0; }
+.pet-profile-card .pet-title-copy strong { color: var(--account-ink); font-size: 12px; }
+.pet-profile-card .pet-title-copy small { color: var(--account-muted); font-size: 8px; }
+.pet-profile-card .pet-editor-head .text-action { margin-left: auto; color: #a19789; font-size: 9px; }
+.pet-profile-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 11px; padding: 12px 0 9px; }
+.pet-profile-grid .field { gap: 5px; color: #8d877b; font-size: 9px; }
+.pet-profile-grid .field input,
+.pet-profile-grid .field select { min-height: 34px; border-color: #e8e2d8; border-radius: 7px; padding: 0 8px; color: #39362f; background: #fffefa; font-size: 10px; }
+.pet-profile-grid .field input:focus,
+.pet-profile-grid .field select:focus { border-color: #bd9274; box-shadow: 0 0 0 2px #f6eee6; }
+.pet-profile-card .pet-save-button { display: inline-flex; align-items: center; justify-self: end; gap: 5px; min-height: 30px; border: 0; border-radius: 15px; padding: 0 3px 0 10px; color: var(--account-accent); background: transparent; font-size: 9px; font-weight: 620; }
+.pet-profile-card .pet-save-button svg { width: 13px; height: 13px; }
+.personal-page .account-empty { border: 1px dashed #ddd5c8; border-radius: 13px; color: #8d877b; background: rgba(255,253,250,.62); font-size: 10px; }
+
+.settings-page { gap: 20px; }
+.settings-page-intro { padding-top: 2px; }
+.settings-page-intro strong { font-size: 25px; }
+.settings-section { display: grid; gap: 8px; }
+.settings-section-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
+.settings-section-heading strong { color: #514d44; font-size: 11px; font-weight: 620; }
+.settings-section-heading span { color: #aaa396; font-size: 7px; letter-spacing: 1.2px; }
+.settings-card { overflow: hidden; border: 1px solid var(--account-line); border-radius: 13px; padding: 0 12px; background: var(--account-surface); box-shadow: 0 5px 18px rgba(74, 58, 38, .03); }
+.settings-card .account-menu-row { min-height: 62px; gap: 10px; border-top: 1px solid #eee9e0; }
+.settings-card .account-menu-row:first-child { border-top: 0; }
+.settings-row-icon { width: 31px; height: 31px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 10px; color: #8a725f; background: #f3eee6; }
+.settings-row-icon svg { width: 15px; height: 15px; stroke: currentColor; }
+.settings-row-copy { min-width: 0; display: grid; flex: 1; gap: 4px; }
+.settings-card .account-menu-row .settings-row-copy strong { color: #343129; font-size: 11px; font-weight: 600; }
+.settings-card .account-menu-row .settings-row-copy small { color: #969084; font-size: 8px; }
+.settings-card .account-menu-row > svg { width: 13px; height: 13px; color: #b3ad9f; }
+.settings-footnote { margin: -2px 2px 0; color: #a09a8e; font-size: 8px; line-height: 1.7; }
+
+.account-shell .account-form-card,
+.account-shell .account-menu-group,
+.account-shell .collection-list { border: 1px solid var(--account-line); border-radius: 14px; background: var(--account-surface); box-shadow: 0 5px 18px rgba(74, 58, 38, .03); }
+.account-shell .account-menu-row,
+.account-shell .account-address-link { border-color: var(--account-line); }
+.account-shell .account-menu-row strong,
+.account-shell .account-address-link strong { color: var(--account-ink); font-size: 11px; }
+.account-shell .account-menu-row small,
+.account-shell .account-address-link small { font-size: 9px; }
+.account-shell .account-save-button { min-height: 40px; border-radius: 9px; background: var(--account-accent); font-size: 11px; }
+.account-shell .secondary-btn { border-color: #ded7cb; color: #625b50; background: #fffdfa; }
+.account-shell .inline-help,
+.account-shell .mini-notice { color: #8c867a; font-size: 9px; line-height: 1.75; }
+.account-shell .permission-row { border-color: var(--account-line); }
+.account-shell .permission-row strong { color: var(--account-ink); font-size: 11px; }
+.account-shell .permission-row small { font-size: 9px; }
+.account-shell .faq-row { border-color: var(--account-line); }
+.account-shell .faq-row summary { color: var(--account-ink); font-size: 11px; }
+.account-shell .faq-row p { color: #746f64; font-size: 10px; line-height: 1.75; }
+.account-shell .collection-row { border-color: var(--account-line); }
+.account-shell .collection-row strong { color: var(--account-ink); font-size: 11px; }
+.account-shell .collection-row small { font-size: 9px; }
+
+@media (max-width: 390px) {
+  .account-page { padding-right: 14px; padding-left: 14px; }
+  .profile-identity-row { padding: 14px 13px; }
+  .profile-info-form { padding-right: 13px; padding-left: 13px; }
+  .profile-form-heading small { max-width: 145px; text-align: right; }
+}
