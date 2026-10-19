@@ -79,7 +79,7 @@ API 与 Worker 可作为不同进程部署，但共享模块代码和配置模�
 │   └── modules/
 │       ├── identity/              # 后台身份、RBAC、消费者微信身份
 │       ├── member/                # 会员资料、地址、积分/储值账户
-│       ├── catalog/               # 商品、类目、SKU、上下架
+│       ├── catalog/               # 一级/二级类目、商品、SKU、上下架
 │       ├── inventory/             # 库存台账、预占、释放、扣减
 │       ├── cart/                  # 购物车
 │       ├── pricing/               # 价格与营销试算、优惠分摊
@@ -89,7 +89,7 @@ API 与 Worker 可作为不同进程部署，但共享模块代码和配置模�
 │       ├── fulfillment/           # 发货、包裹、物流 Provider
 │       ├── customer_service/      # 客服入口、服务记录/运营配置
 │       ├── marketing/             # 优惠券、满减、秒杀、拼团
-│       ├── distribution/          # 推广员、关系、等级、佣金账本
+│       ├── distribution/          # 推广员、分享码、归因、等级、佣金账本
 │       ├── content/               # Banner、公告等商城展示内容
 │       └── audit/                 # 后台敏感操作审计
 ├── web/
@@ -128,7 +128,7 @@ internal/modules/order/
 - 模块可以共用同一个 MySQL 实例，但表的写入权唯一归属一个模块。跨模块工作流通过应用编排/事件衔接；需要一致提交的核心交易优先保持在同一事务边界内。
 - `platform` 不承载促销、佣金等业务判断，也不作为无边界的公共工具箱。
 
-后台页面可在 `web/admin/src/modules/<feature>/` 按商品、订单、售后、营销、分销、会员和权限组织。小程序按首页、商品、购物车、订单、会员/分销等功能组织页面。两端共享 API 契约和设计规范，但不共享服务端信任逻辑。
+后台页面可在 `web/admin/src/modules/<feature>/` 按商品/分类、订单、售后、营销、分销、会员和权限组织。小程序按首页、分类、商品详情、购物车、订单、会员/分销等功能组织页面；商品详情页承载微信好友、朋友圈和海报分享入口。两端共享 API 契约和设计规范，但不共享服务端信任逻辑。
 
 ## 5. 业务模块边界
 
@@ -136,7 +136,7 @@ internal/modules/order/
 | --- | --- | --- |
 | identity | 后台账号、角色、菜单/API 权限；消费者微信身份映射 | audit、所有管理端模块 |
 | member | 消费者资料、收货地址、会员账户；积分/储值账户及明细 | order、marketing、distribution |
-| catalog | 类目、商品、SKU、售价信息、上下架与媒体引用 | inventory、pricing |
+| catalog | 两级商品分类、商品、SKU、售价信息、上下架与媒体引用；运营后台分类维护 | inventory、pricing、distribution（分享商品上下文） |
 | inventory | SKU 可售量、预占量、库存流水、预占释放规则 | order、marketing |
 | cart | 用户购物车条目和失效清理 | catalog、pricing |
 | pricing | 商品价格、优惠规则组合、优惠分摊和下单价格快照 | catalog、marketing、member、order |
@@ -146,7 +146,7 @@ internal/modules/order/
 | fulfillment | 发货包裹、物流单号、轨迹查询和 Provider 适配 | order、COS |
 | customer_service | 小程序客服入口配置、必要的服务/转接记录 | identity、member；对接微信原生客服 |
 | marketing | 优惠券、满减、秒杀、拼团活动及活动库存规则 | pricing、inventory、order、member |
-| distribution | 资格申请、推广关系、等级规则/评估、佣金账本与结算 | member、order、aftersales |
+| distribution | 资格申请、推广关系、分享码签发/校验、分销归因、等级规则/评估、佣金账本与结算 | member、catalog、order、aftersales |
 | content | 首页 Banner、公告等可运营展示内容 | catalog、web clients |
 | audit | 管理端敏感操作审计记录、操作者、目标、结果 | identity、管理端用例 |
 
@@ -158,6 +158,8 @@ internal/modules/order/
 - 微信支付回调、退款回调和消息消费按事件/业务键幂等；重复通知不得重复支付、退款、扣库存或记佣金。
 - 优惠、积分/储值和佣金需保留可解释的明细/账本，不能仅通过覆盖余额或重新计算历史订单来对账。
 - 金额使用整数最小货币单位（例如分）或明确精度的 decimal 类型；不得使用二进制浮点数做金额运算。
+- 商品分类树固定两层：一级分类没有父级，二级分类必须属于一个一级分类且不能再有子级；商品只能关联有效的二级分类。
+- 普通用户分享只形成分享来源追踪；只有有效合作推广员的分享码可以建立推广关系，且已有推广归属不能被后续分享覆盖。
 
 ## 6. 关键数据模型
 
@@ -167,7 +169,7 @@ internal/modules/order/
 | --- | --- |
 | identity | `admin_account`、`role`、`permission`、`account_role`、`role_permission`、`consumer_identity` |
 | member | `member`、`member_address`、`member_account`、`account_ledger` |
-| catalog | `category`、`product`、`sku`、`product_media` |
+| catalog | `product_category`（名称、父分类 ID、层级、状态、排序）、`product`、`sku`、`product_media` |
 | inventory | `sku_inventory`、`inventory_reservation`、`inventory_ledger` |
 | cart | `cart`、`cart_item` |
 | marketing | `campaign`、`coupon_template`、`member_coupon`、`promotion_rule`、`flash_sale_item`、`group_event`、`group_member` |
@@ -175,7 +177,7 @@ internal/modules/order/
 | payment | `payment_transaction`、`payment_notification`、`refund_transaction` |
 | aftersales | `aftersale_case`、`aftersale_item`、`aftersale_status_history` |
 | fulfillment | `shipment`、`shipment_item`、`logistics_tracking_event` |
-| distribution | `promoter_application`、`promoter_profile`、`referral_relation`、`distribution_tier`、`tier_rule_version`、`commission_rule_version`、`commission_order_snapshot`、`commission_account`（账本汇总投影）、`commission_ledger`、`payout_channel_profile`（令牌/脱敏资料引用）、`commission_payout_request`、`commission_payout_attempt` |
+| distribution | `promoter_application`、`promoter_profile`、`referral_relation`、`share_token`、`share_event`、`distribution_tier`、`tier_rule_version`、`commission_rule_version`、`commission_order_snapshot`（含分享 token/渠道与推广员归因快照）、`commission_account`（账本汇总投影）、`commission_ledger`、`payout_channel_profile`（令牌/脱敏资料引用）、`commission_payout_request`、`commission_payout_attempt` |
 | integration | `outbox_event`、`inbox_event`、`scheduled_job`（可按部署实现方式合并或调整） |
 | audit | `admin_audit_log` |
 
@@ -185,6 +187,8 @@ internal/modules/order/
 - 库存流水、会员资金/积分流水、佣金流水采用追加式明细；纠错以冲正记录表达，不删除已生效历史。
 - 佣金账户只核算商城应付推广佣金，与会员积分/储值账户分离；它不是可充值、转账或用于商城消费的通用钱包。
 - `commission_account` 是 `commission_ledger` 的可重建汇总投影，不是独立资金事实来源；提现锁定、出款和失败释放均需有对应账本流水与提现单。
+- `product_category` 的层级和父子关系由服务端校验：一级不可有父级、二级必须指向一级且不能继续嵌套；分类被商品引用或仍有子分类时不能直接删除，应先停用/迁移关联后处理。
+- 分享事件仅记录分析所需的最少字段（分享码、商品/落地页、渠道、时间及必要的匿名/去重标识）；订单快照保留最终推广归属，不依赖可变的实时分享统计回算佣金。
 - `order_item` 与优惠分摊保存 SKU 数量、成交单价和分摊金额，以支持部分退款、佣金基数和财务核对。
 - 佣金记录关联订单项/推广层级/规则版本，保留当时的比例、基数和金额，避免规则变更导致历史金额漂移。
 - 高并发查询所需索引、分区和归档策略在容量评估后确定，不预先假设业务量。
@@ -195,6 +199,8 @@ internal/modules/order/
 
 - 运营后台：`/api/admin/v1/...`，后台账号身份，按角色和权限点授权；管理端接口不得通过隐藏按钮替代服务端鉴权。
 - 小程序：`/api/mini/v1/...`，微信登录后发放商城访问凭证；请求只能访问当前用户可见的数据，不能信任客户端传入的用户 ID、价格或佣金金额。
+- 分类 API 由 `catalog` 提供后台一级/二级分类查询、创建、编辑、排序、启停及商品二级分类关联能力；商品端 API 提供有效分类树和商品详情。
+- 商品分享 API 由 `distribution` 提供分享码签发/撤销及落地解析，商品详情响应提供生成分享卡片和海报所需的商品展示数据。好友/朋友圈分享的路径或 query 和海报小程序码都必须携带服务端签发的来源码。
 - 第三方回调：独立的 `/api/webhooks/wechat/pay` 等地址；按官方协议验签、校验商户与金额、限制重放，返回协议要求的应答。回调不使用普通用户 JWT。
 - 文件：后端鉴权后签发短时 COS 上传凭证/预签名地址；上传完成后校验对象归属、类型、大小和用途。
 - 接口契约放在 `api/openapi/`，管理端和小程序 API schema 分开维护，版本化变更。
@@ -249,6 +255,17 @@ internal/modules/order/
 - 小程序展示微信原生客服入口和官方要求的会话上下文，不自行伪造微信客服能力或采集超出授权范围的数据。
 - 商城保存必要的客服入口配置、客服来源/订单关联和获准获取的会话服务事件；微信侧会话内容、客服工作台及留存能力以已开通的微信产品接口和权限为准。
 - 若未来需要平台内会话分配、客服在线状态或全量聊天留存，应作为单独范围评估自建实时消息系统或第三方 SaaS，不与当前原生客服入口混为一体。
+
+### 8.5 商品分类浏览与分享归因
+
+- 运营后台在 `catalog` 模块维护固定两级的商品分类树：创建一级分类后可在其下创建二级分类；二级分类不能再创建子分类。商品只能选用启用状态的二级分类。
+- 分类修改父级时必须维持两级约束；有子分类或商品引用时不能直接删除，需先迁移商品/子分类或停用。创建、编辑、排序、启停及删除相关操作受后台 RBAC 控制并写入审计。
+- 用户从商品详情可发起微信好友卡片分享、朋友圈分享及分享海报。每种分享都通过服务端取得来源码，卡片/朋友圈落地路径和海报中的小程序码均带相同归因参数。
+- 分享海报由小程序端按统一模板绘制商品图、标题/价格和小程序码，生成后保存到用户设备并按微信允许的能力分享；不为每个用户、商品、渠道组合长期生成 COS 图片。
+- 分享码采用不暴露内部用户 ID 的不可篡改标识，关联分享者、商品/落地页、渠道及版本，并支持服务端校验、撤销和失效。普通用户与有效合作推广员均可生成来源追踪码。
+- 小程序打开分享落地页时，服务端校验分享码并记录必要的访问/转化事件。普通用户的码只用于分享来源分析，不建立 `referral_relation`、不产生佣金；仅审核通过且当前有效的合作推广员码可以为尚未绑定推广关系的用户建立首次分销归属。
+- 已有推广关系保持首次绑定，不被后续普通或合作推广链接覆盖；无效/已撤销推广员码、自我邀请、伪造或失效分享码不能创建新归属。分享 token 不替代用户登录，也不作为客户端可自行声明的佣金凭证。
+- 下单时继续由服务端从有效推广关系解析最多三级推广链，将推广员、层级、分享 token/渠道及规则版本写入订单佣金快照；支付、确认收货、冻结期、退款冲正和真实提现均复用第 9 节现有分销规则。
 
 ## 9. 分销与佣金设计
 
@@ -348,12 +365,15 @@ internal/modules/order/
 - 业务代码按领域模块组织，模块拥有自己的模型、仓储实现和迁移边界。
 - 管理端与小程序的 API/身份边界独立，所有授权在服务端执行。
 - 订单、库存、优惠、支付、售后和佣金有清晰状态机、幂等约束、失败恢复与审计。
+- 后台只能维护一级/二级商品分类，商品只能挂二级分类；存在子类或商品引用时分类不能被直接删除。
+- 微信好友、朋友圈和海报分享均携带服务端签发的来源码；普通用户码只追踪，只有有效合作推广员码能建立首次归因并按既有佣金规则结算。
 - 推广关系最多三级且首次绑定规则可执行；等级条件、费率、佣金账本和退款冲正均可解释、可复算。
 - 佣金与积分/储值明确隔离；提现支持配置冻结、小额自动/大额审核、双通道选择、出款失败释放和已提现后退款人工处置。
 - 外部支付、COS、物流、客服通过明确适配边界接入；非已确认供应商保持可替换。
 - Compose 开发依赖、配置/密钥、迁移、日志/指标、备份与测试要求均有负责模块和验收项。
 
 **编码前由业务/运营确认**
+- 商品详情/好友卡片/朋友圈/海报的文案、视觉模板、展示价格规则与分享内容更新策略。
 - 物流查询/电子面单供应商与微信小程序类目、支付商户/退款权限、COS 区域与上传策略。
 - 推广归因是否允许后台纠正、推广链路各层级的订单归属优先级，以及违规订单处理。
 - 等级统计周期、有效销售额/新客/自购口径、升级和降级策略、规则生效时点。
