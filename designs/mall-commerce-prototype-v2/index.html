@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mall Studio · 原型导航</title>
+  <link rel="stylesheet" href="app.css">
+  <style>
+    body { background: #f5f5f5; color: #191919; }
+    .hub { width: min(1040px, calc(100% - 48px)); margin: 0 auto; padding: 58px 0; }
+    .hub-brand { display: flex; align-items: center; gap: 12px; }
+    .hub-brand-mark { width: 42px; height: 42px; display:grid; place-items:center; border-radius: 12px; color:#fff; background:#ff6700; font-size:21px; font-weight:800; }
+    .hub h1 { margin: 28px 0 8px; font-size: 34px; letter-spacing:-1px; }
+    .hub-intro { color:#858585; font-size:13px; }
+    .hub-columns { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:32px; }
+    .hub-panel { padding:21px; border:1px solid #eaeaea; border-radius:14px; background:#fff; }
+    .hub-panel h2 { margin:0 0 5px; font-size:15px; }
+    .hub-panel p { margin:0 0 16px; color:#999; font-size:11px; }
+    .hub-link { display:flex; align-items:center; justify-content:space-between; min-height:47px; border-top:1px solid #f1f1f1; font-size:12px; }
+    .hub-link span:last-child { color:#ff6700; font-size:11px; }
+    .hub-footer { margin-top:20px; display:flex; align-items:center; justify-content:space-between; gap:12px; color:#999; font-size:10px; }
+    .hub-footer button { border:1px solid #e4e4e4; border-radius:18px; padding:8px 12px; color:#666; background:#fff; font-size:10px; }
+    @media(max-width:680px) { .hub { width:calc(100% - 32px); padding:35px 0; } .hub h1 { font-size:27px; } .hub-columns { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <main class="hub">
+    <div class="hub-brand"><span class="hub-brand-mark">M</span><div><strong>MALL STUDIO</strong><div style="margin-top:3px;color:#999;font-size:10px">电商小程序 + 运营后台 · 交互原型</div></div></div>
+    <h1>让前台与运营，<br>在同一套数据里协作。</h1>
+    <p class="hub-intro">选择一个页面开始体验。运营后台调整商品标签、会员等级或 Banner 后，前台读取同一份浏览器演示数据。</p>
+    <div class="hub-columns">
+      <section class="hub-panel"><h2>小程序端</h2><p>375 × 812 · 四个固定 Tab 入口，另含商城与专区浏览页</p>
+        <a class="hub-link" href="mini-home.html"><span>01　首页</span><span>打开页面 →</span></a>
+        <a class="hub-link" href="mini-membership.html"><span>02　会员中心</span><span>打开页面 →</span></a>
+        <a class="hub-link" href="mini-cart.html"><span>03　购物车</span><span>打开页面 →</span></a>
+        <a class="hub-link" href="mini-profile.html"><span>04　我的</span><span>打开页面 →</span></a>
+        <a class="hub-link" href="mini-shop.html"><span>商城 · 分类筛选</span><span>打开页面 →</span></a>
+        <a class="hub-link" href="mini-zone.html?zone=digital"><span>专区 · 二级分类商品</span><span>打开页面 →</span></a>
+      </section>
+      <section class="hub-panel"><h2>运营后台</h2><p>桌面端 · 左侧导航 + 管理工作区</p>
+        <a class="hub-link" href="admin-products.html"><span>01　商品管理</span><span>打开页面 →</span></a>
+        <a class="hub-link" href="admin-membership.html"><span>02　会员等级与折扣</span><span>打开页面 →</span></a>
+        <a class="hub-link" href="admin-banner-zones.html"><span>03　Banner 与专区</span><span>打开页面 →</span></a>
+        <div style="margin-top:16px;padding:12px;border-radius:8px;background:#fff7f2;color:#8f6a54;font-size:10px;line-height:1.7">演示路径：商品管理勾选「畅销」→ 首页畅销区更新；会员等级调整折扣 → 会员中心读取最新规则。</div>
+      </section>
+    </div>
+    <div class="hub-footer"><span>所有交互仅用于原型演示，不创建真实订单或支付。</span><button type="button" id="reset-demo">恢复初始演示数据</button></div>
+  </main>
+  <script src="data.js"></script>
+  <script>
+    document.getElementById("reset-demo").addEventListener("click", () => {
+      localStorage.removeItem(window.MallData.KEY);
+      window.MallData.read();
+      location.reload();
+    });
+  </script>
+</body>
+</html>
