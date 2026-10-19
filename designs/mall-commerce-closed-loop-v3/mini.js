@@ -368,7 +368,7 @@
       content: `<div class="profile-hero">
           <a class="profile-id profile-profile-link" href="mini-profile.html?view=personal">
             ${avatarMarkup(state.user, "avatar")}
-            <span class="profile-link-copy"><strong class="profile-name">${esc(state.user.name || "商城用户")}</strong><small>个人资料与宠物信息</small></span>
+            <span class="profile-link-copy"><strong class="profile-name">${esc(state.user.name || "商城用户")}</strong><small>个人信息与会员权益</small></span>
             <span class="profile-link-arrow">${icon("chevron")}</span>
           </a>
           <a class="profile-member" href="mini-membership.html">${icon("member")} ${esc(tier.name)}　查看会员中心 ${icon("chevron")}</a>
@@ -380,8 +380,11 @@
             ${[["待付款","bag","pending_payment"],["待发货","box","to_ship"],["待收货","truck","to_receive"],["待评价","chat","pending-review"],["退款/售后","service","after-sale"]].map(([label, glyph, status]) => `<a href="mini-orders.html?status=${status}" class="order-shortcut">${icon(glyph)}${status === "pending-review" && pendingReviewCount ? `<span class="order-shortcut-count">${pendingReviewCount > 99 ? "99+" : pendingReviewCount}</span>` : ""}<span>${label}</span></a>`).join("")}
           </div>
         </section>
-        <section class="section white-card" style="padding:2px 13px">
-          ${[["营销中心","gift","mini-promotions.html"],["我的优惠券","tag","mini-coupons.html"],["分销中心","chart","mini-distribution.html"],["收货地址","homeGoods","mini-addresses.html"],["积分","member","mini-points.html"],["客服","service","mini-profile.html?view=chat"],["设置","settings","mini-profile.html?view=settings"]].map(([label, glyph, href]) => `<a href="${href}" class="list-link"><span style="display:flex;align-items:center;gap:9px">${icon(glyph)}<strong style="font-weight:550">${label}</strong></span><span>${icon("chevron")}</span></a>`).join("")}
+        <section class="profile-tools-section white-card">
+          <div class="section-head"><h2>我的服务</h2></div>
+          <div class="profile-tools-grid">
+            ${[["营销中心","gift","mini-promotions.html"],["优惠券","tag","mini-coupons.html"],["分销中心","chart","mini-distribution.html"],["收货地址","homeGoods","mini-addresses.html"],["积分","member","mini-points.html"],["在线客服","service","mini-profile.html?view=chat"],["爱宠档案","heart","mini-profile.html?view=pets"],["设置","settings","mini-profile.html?view=settings"]].map(([label, glyph, href]) => `<a href="${href}" class="profile-tool-tile"><span class="profile-tool-icon">${icon(glyph)}</span><strong>${label}</strong></a>`).join("")}
+          </div>
         </section>
         <div class="mini-notice">Mi Store · 认真生活，好好购物</div>
       </div>`
@@ -428,22 +431,6 @@
     const user = state.user;
     user.pets ||= [];
     const region = [user.province, user.city, user.district].filter(Boolean).join(" ");
-    const pets = user.pets.map(pet => `<article class="pet-editor-card pet-profile-card">
-      <form class="pet-editor-form" data-pet-id="${esc(pet.id)}">
-        <div class="pet-editor-head">
-          <span class="pet-mark">${icon("heart")}</span>
-          <span class="pet-title-copy"><strong>${esc(pet.name || "新宠物")}</strong><small>${esc(pet.kind || "宠物")} · ${esc(pet.breed || "品种待完善")} · ${esc(petAge(pet.birthday))}</small></span>
-          <button type="button" class="text-action" data-action="pet-delete" data-id="${esc(pet.id)}">移除</button>
-        </div>
-        <div class="pet-profile-grid">
-          <label class="field">宠物昵称<input name="name" required maxlength="20" value="${esc(pet.name || "")}" placeholder="如：团团"></label>
-          <label class="field">宠物类型<select name="kind"><option ${pet.kind === "猫咪" ? "selected" : ""}>猫咪</option><option ${pet.kind === "狗狗" ? "selected" : ""}>狗狗</option><option ${pet.kind && !["猫咪", "狗狗"].includes(pet.kind) ? "selected" : ""}>其他</option></select></label>
-          <label class="field">品种<input name="breed" maxlength="30" value="${esc(pet.breed || "")}" placeholder="如：英短"></label>
-          <label class="field">生日<input name="birthday" type="date" value="${esc(pet.birthday || "")}"></label>
-        </div>
-        <button class="pet-save-button" type="submit">保存宠物档案 ${icon("arrow")}</button>
-      </form>
-    </article>`).join("");
     renderAccountPage("个人信息", `
       <div class="account-page-intro profile-page-intro"><span class="account-eyebrow">MY ACCOUNT</span><strong>个人资料</strong><span>管理你的账户信息与宠物档案</span></div>
       <section class="account-section profile-details-card">
@@ -465,10 +452,7 @@
           <button class="primary-btn account-save-button" type="submit">保存资料</button>
         </form>
       </section>
-      <section class="account-section pet-profile-section">
-        <div class="account-section-head"><span><small class="account-eyebrow">LIFE COMPANIONS</small><strong>宠物档案</strong><small>记录生日、品种与成长信息</small></span><button type="button" class="secondary-btn" data-action="pet-add">${icon("plus")} 添加</button></div>
-        ${pets || `<div class="white-card account-empty">还没有宠物信息，点击“添加宠物”开始记录。</div>`}
-      </section>
+      <a class="settings-pet-entry" href="mini-profile.html?view=pets"><span class="settings-row-icon">${icon("heart")}</span><span class="settings-row-copy"><strong>爱宠档案</strong><small>记录宠物生日、品种与成长信息</small></span><span class="pet-entry-count">${user.pets?.length || 0} 只</span>${icon("chevron")}</a>
       `, "profile", "personal-page");
 
     root.querySelector("#personal-info-form")?.addEventListener("submit", event => {
@@ -483,22 +467,6 @@
       write(state);
       renderPersonal();
       toast("基本信息已保存");
-    });
-    root.querySelectorAll(".pet-editor-form").forEach(formElement => {
-      formElement.addEventListener("submit", event => {
-        event.preventDefault();
-        const form = new FormData(formElement);
-        state = read();
-        const pet = state.user.pets?.find(item => item.id === formElement.dataset.petId);
-        if (!pet) return;
-        pet.name = String(form.get("name") || "").trim();
-        pet.kind = String(form.get("kind") || "其他");
-        pet.breed = String(form.get("breed") || "").trim();
-        pet.birthday = String(form.get("birthday") || "");
-        write(state);
-        renderPersonal();
-        toast("宠物信息已保存");
-      });
     });
     root.querySelector("#avatar-upload")?.addEventListener("change", event => {
       const file = event.target.files?.[0];
@@ -517,16 +485,70 @@
     });
   }
 
+  function renderPetArchive() {
+    state = read();
+    state.user.pets ||= [];
+    const pets = state.user.pets.map(pet => `<article class="pet-editor-card pet-profile-card">
+      <form class="pet-editor-form" data-pet-id="${esc(pet.id)}">
+        <div class="pet-editor-head">
+          <span class="pet-mark">${icon("heart")}</span>
+          <span class="pet-title-copy"><strong>${esc(pet.name || "新宠物")}</strong><small>${esc(pet.kind || "宠物")} · ${esc(pet.breed || "品种待完善")} · ${esc(petAge(pet.birthday))}</small></span>
+          <button type="button" class="text-action" data-action="pet-delete" data-id="${esc(pet.id)}">移除</button>
+        </div>
+        <div class="pet-profile-grid">
+          <label class="field">宠物昵称<input name="name" required maxlength="20" value="${esc(pet.name || "")}" placeholder="如：团团"></label>
+          <label class="field">宠物类型<select name="kind"><option ${pet.kind === "猫咪" ? "selected" : ""}>猫咪</option><option ${pet.kind === "狗狗" ? "selected" : ""}>狗狗</option><option ${pet.kind && !["猫咪", "狗狗"].includes(pet.kind) ? "selected" : ""}>其他</option></select></label>
+          <label class="field">品种<input name="breed" maxlength="30" value="${esc(pet.breed || "")}" placeholder="如：英短"></label>
+          <label class="field">生日<input name="birthday" type="date" value="${esc(pet.birthday || "")}"></label>
+        </div>
+        <button class="pet-save-button" type="submit">保存爱宠档案 ${icon("arrow")}</button>
+      </form>
+    </article>`).join("");
+    renderAccountPage("爱宠档案", `<div class="account-page-intro"><span class="account-eyebrow">LIFE COMPANIONS</span><strong>爱宠档案</strong><span>记录爱宠的生日、品种与成长信息</span></div>
+      <section class="account-section pet-profile-section">
+        <div class="account-section-head"><span><strong>我的爱宠</strong><small>档案信息仅用于个性化服务</small></span><button type="button" class="secondary-btn" data-action="pet-add">${icon("plus")} 添加</button></div>
+        ${pets || `<div class="white-card account-empty">还没有爱宠档案，点击“添加”开始记录。</div>`}
+      </section>`, "settings", "pet-archive-page");
+    root.querySelectorAll(".pet-editor-form").forEach(formElement => {
+      formElement.addEventListener("submit", event => {
+        event.preventDefault();
+        const form = new FormData(formElement);
+        state = read();
+        const pet = state.user.pets?.find(item => item.id === formElement.dataset.petId);
+        if (!pet) return;
+        pet.name = String(form.get("name") || "").trim();
+        pet.kind = String(form.get("kind") || "其他");
+        pet.breed = String(form.get("breed") || "").trim();
+        pet.birthday = String(form.get("birthday") || "");
+        write(state);
+        renderPetArchive();
+        toast("爱宠档案已保存");
+      });
+    });
+  }
+
   function renderSettings() {
     state = read();
+    const user = state.user;
+    const userRegion = [user.province, user.city, user.district].filter(Boolean).join(" ") || "未填写";
     renderAccountPage("设置", `
       <div class="account-page-intro settings-page-intro"><span class="account-eyebrow">PREFERENCES</span><strong>个人设置</strong><span>管理个人资料、账号安全与隐私偏好</span></div>
       <section class="settings-section">
-        <div class="settings-section-heading"><strong>个人信息</strong><span>PROFILE</span></div>
-        <div class="settings-card">
-          <a class="account-menu-row" href="mini-profile.html?view=personal"><span class="settings-row-icon">${icon("member")}</span><span class="settings-row-copy"><strong>${esc(state.user.name || "完善个人信息")}</strong><small>${esc(maskedPhone(state.user.phone || "尚未绑定手机号"))} · 基本资料与宠物档案</small></span>${icon("chevron")}</a>
-        </div>
+        <details class="settings-profile-details" open>
+          <summary class="settings-section-heading settings-profile-summary"><span><strong>个人信息</strong><small>${esc(user.name || "尚未填写姓名")} · ${esc(maskedPhone(user.phone || "尚未绑定手机号"))}</small></span><span>PROFILE ${icon("chevron")}</span></summary>
+          <div class="settings-profile-card">
+            <div class="settings-profile-identity">${avatarMarkup(user, "avatar account-avatar")}<span><strong>${esc(user.name || "商城用户")}</strong><small>${esc(maskedPhone(user.phone || "尚未绑定手机号"))}</small></span></div>
+            <div class="settings-profile-grid">
+              <div><small>性别</small><strong>${esc(user.gender || "未填写")}</strong></div>
+              <div><small>生日</small><strong>${esc(user.birthday || "未填写")}</strong></div>
+              <div><small>所在地区</small><strong>${esc(userRegion)}</strong></div>
+              <div><small>收货地址</small><strong>${state.addresses?.length || 0} 个地址</strong></div>
+            </div>
+            <a class="settings-profile-edit" href="mini-profile.html?view=personal">编辑个人资料 ${icon("arrow")}</a>
+          </div>
+        </details>
       </section>
+      <a class="settings-pet-entry settings-pet-entry-card" href="mini-profile.html?view=pets"><span class="settings-row-icon">${icon("heart")}</span><span class="settings-row-copy"><strong>爱宠档案</strong><small>记录宠物生日、品种与成长信息</small></span><span class="pet-entry-count">${user.pets?.length || 0} 只</span>${icon("chevron")}</a>
       <section class="settings-section">
         <div class="settings-section-heading"><strong>账号与安全</strong><span>ACCOUNT</span></div>
         <div class="settings-card">
@@ -710,6 +732,7 @@
     const view = params.get("view") || "";
     if (view === "chat") renderChat();
     else if (view === "personal") renderPersonal();
+    else if (view === "pets") renderPetArchive();
     else if (view === "settings") renderSettings();
     else if (view === "permissions") renderPermissions();
     else if (view === "legal") renderLegalDocuments();
@@ -1331,12 +1354,12 @@
       state.user.pets ||= [];
       state.user.pets.push({ id: `PET-${Date.now()}`, name: "", kind: "猫咪", breed: "", birthday: "" });
       write(state);
-      renderPersonal();
+      renderPetArchive();
     } else if (action === "pet-delete") {
       state = read();
       state.user.pets = (state.user.pets || []).filter(pet => pet.id !== control.dataset.id);
       write(state);
-      renderPersonal();
+      renderPetArchive();
       toast("宠物信息已删除");
     } else if (action === "send-phone-code") {
       phoneCodeRequested = true;
