@@ -1,0 +1,24 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "栖集商城全业务仿真": {
+      "versions": [
+        {
+          "path": "index.html",
+          "createdAt": "2026-10-19T03:54:03.761Z",
+          "status": "needs-review",
+          "subtitle": "运营后台与消费者小程序联动演示",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "电商业务闭环"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-10-19T03:54:03.763Z",
+  "updatedAt": "2026-10-19T03:54:03.763Z"
+}
