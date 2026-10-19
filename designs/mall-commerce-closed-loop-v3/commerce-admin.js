@@ -6,6 +6,12 @@
   let state = read();
   let orderFilter = "all";
   let orderQuery = "";
+  const shippingProvinces = [
+    "北京市", "天津市", "上海市", "重庆市", "河北省", "山西省", "辽宁省", "吉林省", "黑龙江省", "江苏省",
+    "浙江省", "安徽省", "福建省", "江西省", "山东省", "河南省", "湖北省", "湖南省", "广东省", "海南省",
+    "四川省", "贵州省", "云南省", "陕西省", "甘肃省", "青海省", "台湾省", "内蒙古自治区", "广西壮族自治区",
+    "西藏自治区", "宁夏回族自治区", "新疆维吾尔自治区", "香港特别行政区", "澳门特别行政区"
+  ];
 
   const statusText = {
     pending_payment: "待付款",
@@ -127,10 +133,82 @@
     const openOrders = state.orders.filter(item => ["to_ship", "to_receive"].includes(item.status));
     const rows = openOrders.map(order => `<tr><td>${esc(order.id)}</td><td>${esc(order.address?.name || "—")}<small style="display:block;margin-top:4px;color:#999">${esc(order.address?.phone || "")}</small></td><td>${statusTag(order.status)}</td><td>${esc(order.carrier || "待发货")}</td><td>${esc(order.trackingNo || "—")}</td><td>${order.status === "to_ship" ? `<button class="text-action" data-action="ship" data-id="${esc(order.id)}">录入物流</button>` : `<button class="text-action" data-action="view-track" data-id="${esc(order.id)}">查看轨迹</button>`}</td></tr>`).join("");
     const carriers = state.carriers.map(carrier => `<div class="list-link"><span>${esc(carrier.name)}</span><button class="switch ${carrier.enabled ? "on" : ""}" aria-label="切换${esc(carrier.name)}" data-action="toggle-carrier" data-id="${esc(carrier.id)}"></button></div>`).join("");
+    const templates = (state.shippingTemplates || []).map(template => {
+      const exceptions = (template.rules || []).map(rule => `${(rule.provinces || []).map(esc).join("、")}：${rule.freeShipping ? "包邮" : `${money(rule.fee)}${Number(rule.freeThreshold) > 0 ? `，满 ${money(rule.freeThreshold)} 包邮` : ""}`}`).join("；");
+      const fallback = template.freeShipping ? "默认全境包邮" : `默认 ${money(template.fee)}${Number(template.freeThreshold) > 0 ? `，满 ${money(template.freeThreshold)} 包邮` : ""}`;
+      return `<article class="shipping-template-card"><div><strong>${esc(template.name)}</strong><button class="text-action" data-action="edit-shipping-template" data-id="${esc(template.id)}">编辑规则</button></div><small>${fallback}</small><small>${exceptions ? `地区例外：${exceptions}` : "未设置地区例外"}</small><small>关联商品：${state.products.filter(product => product.shippingTemplateId === template.id).length} 件</small></article>`;
+    }).join("");
     root.innerHTML = adminShell("logistics", `${head("快递 / 物流", "维护可用承运商、为待发货订单录入运单；物流节点实时显示在用户订单中。")}
-      <div class="stats-row">${stat("待发货", state.orders.filter(item => item.status === "to_ship").length, "待录入承运商与单号")}${stat("运输中", state.orders.filter(item => item.status === "to_receive").length, "用户端可查看物流")}${stat("承运商", state.carriers.filter(item => item.enabled).length, "已启用承运商")}${stat("已完成物流", state.orders.filter(item => item.status === "completed").length, "用户确认收货")}</div>
+      <div class="stats-row">${stat("待发货", state.orders.filter(item => item.status === "to_ship").length, "待录入承运商与单号")}${stat("运输中", state.orders.filter(item => item.status === "to_receive").length, "用户端可查看物流")}${stat("配送模板", (state.shippingTemplates || []).length, "按省份设置包邮与运费")}${stat("已完成物流", state.orders.filter(item => item.status === "completed").length, "用户确认收货")}</div>
       <div class="compare-layout">${panel("待履约订单", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>订单号</th><th>收货人</th><th>状态</th><th>承运商</th><th>运单号</th><th>操作</th></tr></thead><tbody>${rows || `<tr><td colspan="6"><div class="admin-empty">暂无待履约订单</div></td></tr>`}</tbody></table></div>`, "录入发货信息后同步订单状态")}
-        ${panel("承运商配置", `<div class="panel-body">${carriers}<div class="inline-help" style="margin-top:10px">停用承运商后，发货表单不再提供该选项。</div></div>`, "模拟配置")}</div>`);
+        ${panel("承运商配置", `<div class="panel-body">${carriers}<div class="inline-help" style="margin-top:10px">停用承运商后，发货表单不再提供该选项。</div></div>`, "模拟配置")}</div>
+      <div style="margin-top:14px">${panel("配送模板", `<div class="panel-body"><div class="shipping-template-list">${templates || `<div class="admin-empty">暂无配送模板</div>`}</div><div class="inline-help" style="margin-top:12px">商品关联模板后，小程序按收货省份计算各模板运费；相同模板商品合并判断满额包邮。</div><button class="admin-btn primary" type="button" data-action="new-shipping-template" style="margin-top:12px">＋ 新建配送模板</button></div>`, "配置默认规则与省份例外")}</div>`);
+  }
+
+  function shippingRuleRow(rule = {}) {
+    const selected = new Set(rule.provinces || []);
+    return `<div class="shipping-rule-row">
+      <label class="field"><span>适用省份 / 地区</span><select data-shipping-provinces multiple size="5">${shippingProvinces.map(province => `<option value="${province}" ${selected.has(province) ? "selected" : ""}>${province}</option>`).join("")}</select></label>
+      <label class="field"><span>该地区运费（元）</span><input data-shipping-fee type="number" min="0" step="0.01" required value="${Number(rule.fee || 0)}"></label>
+      <label class="field"><span>满额包邮门槛（0 表示不启用）</span><input data-shipping-threshold type="number" min="0" step="0.01" value="${Number(rule.freeThreshold || 0)}"></label>
+      <label class="shipping-free-choice"><input data-shipping-free type="checkbox" ${rule.freeShipping ? "checked" : ""}> 无条件包邮</label>
+      <button type="button" class="text-action danger" data-action="remove-shipping-rule">移除此地区规则</button>
+    </div>`;
+  }
+
+  function shippingTemplateForm(template = null) {
+    const editing = Boolean(template);
+    const current = template || { id: "", name: "", fee: 8, freeShipping: false, freeThreshold: 99, rules: [] };
+    const backdrop = openModal(editing ? "编辑配送模板" : "新建配送模板", `<form id="shipping-template-form">
+      <div class="form-grid">
+        <label class="field" style="grid-column:1/-1">模板名称<input name="name" required maxlength="40" value="${esc(current.name)}" placeholder="例如：全国标准配送"></label>
+        <label class="field">默认运费（元）<input name="fee" type="number" min="0" step="0.01" required value="${Number(current.fee || 0)}"></label>
+        <label class="field">默认满额包邮门槛（0 表示不启用）<input name="freeThreshold" type="number" min="0" step="0.01" value="${Number(current.freeThreshold || 0)}"></label>
+        <label class="shipping-free-choice" style="grid-column:1/-1"><input name="freeShipping" type="checkbox" ${current.freeShipping ? "checked" : ""}> 默认地区无条件包邮</label>
+      </div>
+      <div class="shipping-rule-heading"><strong>省份 / 地区例外</strong><small>可多选省份；无条件包邮优先于运费和门槛。</small></div>
+      <div id="shipping-rule-rows">${(current.rules || []).map(rule => shippingRuleRow(rule)).join("")}</div>
+      <button type="button" class="admin-btn" data-action="add-shipping-rule">＋ 添加地区规则</button>
+    </form>`, `<button type="button" class="secondary-btn" data-modal-close>取消</button><button type="button" class="primary-btn small" data-action="save-shipping-template">保存模板</button>`);
+    backdrop.querySelector(".modal").classList.add("shipping-template-modal");
+    const rows = backdrop.querySelector("#shipping-rule-rows");
+    backdrop.querySelector("[data-action='add-shipping-rule']").addEventListener("click", () => {
+      rows.insertAdjacentHTML("beforeend", shippingRuleRow());
+    });
+    backdrop.addEventListener("click", event => {
+      if (event.target.closest("[data-action='remove-shipping-rule']")) event.target.closest(".shipping-rule-row")?.remove();
+    });
+    backdrop.querySelector("[data-action='save-shipping-template']").addEventListener("click", () => {
+      const form = backdrop.querySelector("#shipping-template-form");
+      if (!form.reportValidity()) return;
+      const values = new FormData(form);
+      const name = String(values.get("name") || "").trim();
+      const fee = Number(form.elements.fee.value);
+      const freeThreshold = Number(form.elements.freeThreshold.value || 0);
+      if (!name || !Number.isFinite(fee) || fee < 0 || !Number.isFinite(freeThreshold) || freeThreshold < 0) return toast("请填写有效的模板名称、运费和包邮门槛");
+      const usedProvinces = new Set();
+      const rules = [];
+      for (const row of rows.querySelectorAll(".shipping-rule-row")) {
+        const provinces = [...row.querySelector("[data-shipping-provinces]").selectedOptions].map(option => option.value);
+        const ruleFee = Number(row.querySelector("[data-shipping-fee]").value);
+        const threshold = Number(row.querySelector("[data-shipping-threshold]").value || 0);
+        if (!provinces.length) return toast("每条地区规则至少选择一个省份");
+        if (provinces.some(province => usedProvinces.has(province))) return toast("同一省份不能重复配置地区规则");
+        provinces.forEach(province => usedProvinces.add(province));
+        if (!Number.isFinite(ruleFee) || ruleFee < 0 || !Number.isFinite(threshold) || threshold < 0) return toast("地区运费和包邮门槛必须是有效的非负金额");
+        rules.push({ provinces, fee: ruleFee, freeShipping: row.querySelector("[data-shipping-free]").checked, freeThreshold: threshold });
+      }
+      const id = current.id || `SHIP-${Date.now().toString().slice(-8)}`;
+      const saved = { id, name, fee, freeShipping: form.elements.freeShipping.checked, freeThreshold, rules };
+      state.shippingTemplates ||= [];
+      const index = state.shippingTemplates.findIndex(item => item.id === id);
+      if (index >= 0) state.shippingTemplates[index] = saved;
+      else state.shippingTemplates.unshift(saved);
+      write(state);
+      closeModal();
+      renderLogistics();
+      toast("配送模板已保存，关联商品及小程序结算将同步使用");
+    });
   }
 
   function renderUsers() {
@@ -209,7 +287,9 @@
         const carrier = state.carriers.find(item => item.id === id);
         if (carrier) carrier.enabled = !carrier.enabled;
         write(state); renderLogistics(); toast("承运商配置已更新");
-      } else if (action === "toggle-user") {
+      } else if (action === "new-shipping-template") shippingTemplateForm();
+      else if (action === "edit-shipping-template") shippingTemplateForm(state.shippingTemplates?.find(item => item.id === id));
+      else if (action === "toggle-user") {
         const user = state.users.find(item => item.id === id);
         if (user) user.status = user.status === "active" ? "disabled" : "active";
         if (state.user.id === id) state.user.status = user?.status || state.user.status;

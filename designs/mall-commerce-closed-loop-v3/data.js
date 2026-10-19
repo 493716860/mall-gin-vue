@@ -435,6 +435,19 @@
       { id: "zto", name: "中通快递", enabled: true },
       { id: "jd", name: "京东物流", enabled: true }
     ],
+    shippingTemplates: [
+      {
+        id: "SHIP-STANDARD",
+        name: "全国标准配送",
+        fee: 8,
+        freeShipping: false,
+        freeThreshold: 99,
+        rules: [
+          { provinces: ["上海市", "江苏省", "浙江省"], fee: 0, freeShipping: true, freeThreshold: 0 },
+          { provinces: ["西藏自治区", "新疆维吾尔自治区", "青海省"], fee: 15, freeShipping: false, freeThreshold: 0 }
+        ]
+      }
+    ],
     settings: { commissionRate: 5, minimumWithdrawal: 100, freeShippingThreshold: 99 },
     legalDocuments: [
       { id: "privacy", title: "隐私声明", category: "隐私政策", version: "v1.0", updatedAt: "2026-10-01", status: "active", content: "我们仅为提供商城服务收集必要的信息，包括账号资料、订单与配送信息、客服沟通内容及必要的设备信息。我们会采取合理的安全措施保护信息，并按法律法规要求处理和保存。您可以在授权管理中调整非必要权限，或通过安全中心提交账号注销申请。" },
@@ -489,6 +502,7 @@
       salesCount: Number(product.salesCount ?? demoSales[index] ?? 300),
       rating: Number(product.rating || 4.8),
       reviewCount: Number(product.reviewCount || 386 + index * 117),
+      shippingTemplateId: product.shippingTemplateId || "SHIP-STANDARD",
       detailIntro: product.detailIntro || `${product.name} ${product.subtitle || "为日常生活带来更好的使用体验。"}严选品质与实用设计，提供清晰的商品保障与售后服务。`,
       detailImages: product.detailImages?.length ? product.detailImages : [
         image(`Long-form ecommerce product detail image for ${product.name}, elegant product in a real modern home setting, premium Chinese retail visual merchandising, no text`, "portrait_4_3"),
@@ -516,6 +530,7 @@
       state.user.realName = { ...defaults.user.realName, ...(state.user.realName || {}) };
       state.user.pets ||= JSON.parse(JSON.stringify(defaults.user.pets));
       state.legalDocuments ||= JSON.parse(JSON.stringify(defaults.legalDocuments));
+      state.shippingTemplates ||= JSON.parse(JSON.stringify(defaults.shippingTemplates));
       state.orders ||= [];
       if (!state.orders.some(order => order.id === "M202610140006")) {
         const reviewDemoOrder = defaults.orders.find(order => order.id === "M202610140006");
@@ -590,6 +605,7 @@
           reviewCount: Number(product.reviewCount || fallback?.reviewCount || 386),
           detailIntro: product.detailIntro || fallback?.detailIntro || "",
           detailImages: product.detailImages?.length ? product.detailImages : fallback?.detailImages || [],
+          shippingTemplateId: product.shippingTemplateId || fallback?.shippingTemplateId || state.shippingTemplates[0]?.id || "",
           reviews: (product.reviews?.length ? product.reviews : fallback?.reviews || []).map((review, reviewIndex) => ({
             ...review,
             id: review.id || `REV-${product.id}-${reviewIndex + 1}`,

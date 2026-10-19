@@ -39,7 +39,7 @@
   const addressText = address => [address?.province, address?.city, address?.district, address?.detail].filter(Boolean).join("");
   const selectedAddress = source => source.selectedAddress || source.addresses?.find(item => item.isDefault) || source.addresses?.[0];
 
-  function cartPricing(rows, couponId = "") {
+  function cartPricing(rows, couponId = "", address = selectedAddress(state)) {
     const subtotal = cents(rows.reduce((sum, { item, sku }) => sum + Number(sku.price) * Number(item.qty), 0));
     const tier = currentTier();
     const memberRate = Number(tier?.discount || 100) / 100;
@@ -55,8 +55,13 @@
         : cents(couponValue);
     }
     const discount = Math.min(subtotal, memberDiscount + couponDiscount);
-    const shippingFee = !rows.length || subtotal - discount >= Number(state.settings?.freeShippingThreshold || 99) ? 0 : 8;
-    return { subtotal, memberDiscount, couponDiscount, discount, shippingFee, total: cents(Math.max(0, subtotal - discount + shippingFee)), coupon };
+    const shipping = window.MallOps.quoteShipping(rows.map(({ item, product, sku }) => ({
+      productId: product?.id || item?.productId,
+      price: sku?.price,
+      qty: item?.qty
+    })), address, state);
+    const shippingFee = shipping.fee;
+    return { subtotal, memberDiscount, couponDiscount, discount, shippingFee, shipping, total: cents(Math.max(0, subtotal - discount + shippingFee)), coupon };
   }
 
   function productTags(product) {
@@ -273,7 +278,8 @@
       return claim.status === "available" && coupon && subtotal >= Number(coupon.threshold || 0);
     });
     if (!availableCoupons.some(item => (item.claimId || item.id) === state.selectedCartCouponId)) state.selectedCartCouponId = "";
-    const pricing = cartPricing(selected, state.selectedCartCouponId);
+    const deliveryAddress = selectedAddress(state);
+    const pricing = cartPricing(selected, state.selectedCartCouponId, deliveryAddress);
     const allSelected = rows.length > 0 && selected.length === rows.length;
     const cartRows = rows.map(({ item, product, sku }) => `<div class="cart-row">
       <input class="check" type="checkbox" data-action="cart-select" data-id="${esc(product.id)}" data-sku-id="${esc(sku.id)}" ${item.selected ? "checked" : ""} aria-label="选择${esc(product.name)}">
@@ -290,7 +296,7 @@
     miniShell({
       active: "cart",
       header: `<div class="mini-head-row"><span class="mini-title">购物车</span><button class="head-link" type="button" data-action="cart-edit" style="border:0;background:none;padding:6px">${rows.length ? "编辑" : ""}</button></div>`,
-      content: `<div class="mini-content" style="padding-top:2px">${rows.length ? `<div class="white-card" style="padding:0 13px">${cartRows}</div><div class="mini-notice">已选 ${selected.length} 件商品</div>` : empty}</div>`,
+      content: `<div class="mini-content" style="padding-top:2px">${rows.length ? `<a class="cart-delivery-link" href="mini-addresses.html?return=cart"><span><strong>配送至 ${esc(deliveryAddress ? addressText(deliveryAddress) : "请选择收货地址")}</strong><small>${deliveryAddress?.name ? `${esc(deliveryAddress.name)} ${esc(deliveryAddress.phone || "")} · 运费按地区规则计算` : "选择地址后显示对应运费"}</small></span>${icon("chevron")}</a><div class="white-card" style="padding:0 13px">${cartRows}</div><div class="mini-notice">已选 ${selected.length} 件商品</div>` : empty}</div>`,
       bottom: rows.length ? `<div class="cart-checkout">
         <details class="cart-discount">
           <summary><span>优惠明细</span><span>已优惠 ${money(pricing.discount)}　配送 ${pricing.shippingFee ? money(pricing.shippingFee) : "免运费"}</span></summary>
@@ -332,8 +338,8 @@
       const product = productById(item.productId);
       return { item, product, sku: product?.skus?.find(row => row.id === item.skuId) || product?.skus?.[0] };
     }).filter(row => row.product && row.sku);
-    const pricing = cartPricing(lines, state.selectedCartCouponId || "");
     const address = selectedAddress(state);
+    const pricing = cartPricing(lines, state.selectedCartCouponId || "", address);
     const coupon = state.selectedCartCouponId || "";
     const text = addressText(address);
     openModal("确认订单", `<div style="font-size:11px;color:#777;line-height:1.8">已选择 ${selected.length} 件商品 · 优惠及运费与订单规则一致</div>
@@ -345,7 +351,7 @@
           return couponData && pricing.subtotal >= Number(couponData.threshold || 0) ? `<option value="${esc(claimId)}" ${claimId === coupon ? "selected" : ""}>${esc(couponData.name)}</option>` : "";
         }).join("")}</select></label>
         <label class="field" style="grid-column:1/-1">订单备注<textarea id="checkout-remark" rows="2" placeholder="选填"></textarea></label>
-      </div><div class="checkout-modal-total">预估应付 <strong>${money(pricing.total)}</strong>（含配送费）</div>
+      </div><div class="checkout-modal-total"><div class="checkout-shipping-line"><span>配送费 ${address?.province ? `· ${esc(address.province)}` : ""}</span><strong>${pricing.shippingFee ? money(pricing.shippingFee) : "包邮"}</strong></div><div>预估应付 <strong>${money(pricing.total)}</strong>（含配送费）</div></div>
       <div class="inline-help" style="margin-top:10px">创建后可在「我的订单」模拟支付；运营后台可继续发货、审核售后。</div>`,
       `<button class="secondary-btn" type="button" data-modal-close>再想想</button><button class="primary-btn small" type="button" data-action="confirm-order">提交订单</button>`);
   }
@@ -1031,6 +1037,11 @@
     const addressLine = selectedAddress
       ? `${selectedAddress.province || ""}${selectedAddress.city || ""}${selectedAddress.district || ""}${selectedAddress.detail || ""}`
       : "请选择收货地址";
+    const shippingPreview = window.MallOps.quoteShipping(
+      [{ productId: product.id, price: currentSku.price, qty: detailQty }],
+      selectedAddress,
+      state
+    );
     const galleryThumbs = gallery.map((src, index) => `<button class="detail-thumb ${index === detailGalleryIndex ? "active" : ""}" type="button" data-action="gallery-image" data-index="${index}" aria-label="查看第 ${index + 1} 张商品图片"><img src="${esc(src)}" alt=""></button>`).join("");
     const specNames = [...new Set(skus.flatMap(sku => skuSpecs(sku).map(spec => spec.name)))];
     const skuOptions = specNames.map(specName => {
@@ -1067,7 +1078,7 @@
           <div class="detail-row-head detail-quantity"><strong>购买数量</strong><div class="stepper"><button type="button" data-action="detail-qty" data-delta="-1" aria-label="减少数量">−</button><output>${detailQty}</output><button type="button" data-action="detail-qty" data-delta="1" aria-label="增加数量">＋</button></div></div>
         </section>
         <button class="detail-card detail-address" type="button" data-action="choose-address">
-          <span class="detail-address-icon">${icon("homeGoods")}</span><span><strong>配送至</strong><small>${esc(addressLine)}　${selectedAddress ? `${esc(selectedAddress.name || "")} ${esc(selectedAddress.phone || "")}` : ""}</small></span>${icon("chevron")}
+          <span class="detail-address-icon">${icon("homeGoods")}</span><span><strong>配送至</strong><small>${esc(addressLine)}　${selectedAddress ? `${esc(selectedAddress.name || "")} ${esc(selectedAddress.phone || "")}` : ""} · ${shippingPreview.fee ? `运费 ${money(shippingPreview.fee)}` : "包邮"}</small></span>${icon("chevron")}
         </button>
         <section class="detail-service"><span>✓ 正品保障</span><span>✓ 7 天退换</span><span>✓ 快速配送</span></section>
         <nav class="detail-anchor-nav"><a href="#detail-top10">销量榜</a><a href="#detail-reviews">评价 ${Number(product.reviewCount || 0).toLocaleString()}</a><a href="#detail-description">商品详情</a><a href="#detail-related">推荐商品</a></nav>
@@ -1237,7 +1248,7 @@
         if (!address) return chooseDeliveryAddress();
         const order = window.MallOps.createOrder({
           lines: [{ productId: params.get("id"), skuId: detailSkuId, qty: detailQty }],
-          address: { name: address.name, phone: address.phone, text: [address.province, address.city, address.district, address.detail].filter(Boolean).join("") },
+          address: { ...address, text: [address.province, address.city, address.district, address.detail].filter(Boolean).join("") },
           shareTokenId: sessionStorage.getItem("mall-pending-share-token") || params.get("share") || ""
         });
         sessionStorage.removeItem("mall-pending-share-token");
@@ -1386,11 +1397,12 @@
       write(state);
       const selected = state.cart.filter(item => item.selected).map(item => {
         const product = productById(item.productId);
-        return { item, sku: product?.skus?.find(sku => sku.id === item.skuId) || product?.skus?.[0] };
+        return { item, product, sku: product?.skus?.find(sku => sku.id === item.skuId) || product?.skus?.[0] };
       }).filter(item => item.sku);
-      const pricing = cartPricing(selected, state.selectedCartCouponId);
+      const pricing = cartPricing(selected, state.selectedCartCouponId, selectedAddress(state));
       const total = document.querySelector(".checkout-modal-total");
-      if (total) total.innerHTML = `预估应付 <strong>${money(pricing.total)}</strong>（含配送费）`;
+      const address = selectedAddress(state);
+      if (total) total.innerHTML = `<div class="checkout-shipping-line"><span>配送费 ${address?.province ? `· ${esc(address.province)}` : ""}</span><strong>${pricing.shippingFee ? money(pricing.shippingFee) : "包邮"}</strong></div><div>预估应付 <strong>${money(pricing.total)}</strong>（含配送费）</div>`;
     }
   });
 
@@ -1408,7 +1420,7 @@
         state = read();
         const address = selectedAddress(state);
         if (!address) throw new Error("请先添加或选择收货地址");
-        const orderAddress = { name: address.name, phone: address.phone, text: addressText(address) };
+        const orderAddress = { ...address, text: addressText(address) };
         const order = window.MallOps.createOrder({
           lines: selected.map(item => ({ productId: item.productId, skuId: item.skuId || productById(item.productId)?.skus?.[0]?.id, qty: item.qty })),
           address: orderAddress,

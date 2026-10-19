@@ -205,6 +205,41 @@
     }).filter(item => item.amount > 0);
   }
 
+  function provinceKey(value) {
+    return String(value || "").replace(/\s/g, "").replace(/(维吾尔自治区|壮族自治区|回族自治区|特别行政区|自治区|省|市)$/, "");
+  }
+
+  function quoteShipping(lines, address, source = read()) {
+    const province = provinceKey(address?.province);
+    const groups = new Map();
+    (lines || []).forEach(line => {
+      const productId = line.productId || line.product?.id;
+      const product = source.products.find(item => item.id === productId);
+      const template = source.shippingTemplates?.find(item => item.id === product?.shippingTemplateId)
+        || source.shippingTemplates?.[0]
+        || { id: "legacy-shipping", name: "默认配送", fee: 8, freeThreshold: Number(source.settings?.freeShippingThreshold || 99), rules: [] };
+      const key = template.id || "legacy-shipping";
+      const group = groups.get(key) || { template, subtotal: 0 };
+      const quantity = Number(line.qty ?? line.item?.qty ?? 1);
+      const price = Number(line.price ?? line.sku?.price ?? 0);
+      group.subtotal += price * quantity;
+      groups.set(key, group);
+    });
+    const breakdown = [...groups.values()].map(({ template, subtotal }) => {
+      const rule = template.rules?.find(entry => (entry.provinces || []).some(item => provinceKey(item) === province));
+      const free = Boolean(rule?.freeShipping ?? template.freeShipping);
+      const fee = Number(rule?.fee ?? template.fee ?? 8);
+      const threshold = Number(rule?.freeThreshold ?? template.freeThreshold ?? 0);
+      const finalFee = free || (threshold > 0 && subtotal >= threshold) ? 0 : fee;
+      return { templateId: template.id, templateName: template.name, subtotal: cents(subtotal), fee: cents(finalFee) };
+    });
+    return {
+      province: String(address?.province || ""),
+      fee: cents(breakdown.reduce((sum, row) => sum + row.fee, 0)),
+      breakdown
+    };
+  }
+
   function createOrder({ lines, address, couponId = "", remark = "", promoType = "", promoId = "", shareTokenId = "" }) {
     const state = read();
     ensureDistribution(state);
@@ -242,6 +277,7 @@
         image: sku.image || product.gallery?.[0] || product.image,
         price: cents(promo ? (promoType === "flash" ? promo.price : promo.groupPrice) : sku.price),
         qty,
+        shippingTemplateId: product.shippingTemplateId || state.shippingTemplates?.[0]?.id || "",
         promoType
       };
     });
@@ -279,14 +315,29 @@
       couponClaimId = claim.claimId || claim.id;
     }
     const totalDiscount = Math.min(subtotal, memberDiscount + couponDiscount);
-    const shippingFee = subtotal - totalDiscount >= Number(state.settings?.freeShippingThreshold || 99) ? 0 : 8;
+    const savedAddress = state.selectedAddress || state.addresses?.find(item => item.isDefault) || state.addresses?.[0] || {};
+    const sameProvince = !address?.province || provinceKey(address.province) === provinceKey(savedAddress.province);
+    const savedLocation = sameProvince ? savedAddress : {};
+    const orderAddress = {
+      ...savedAddress,
+      ...(address || {}),
+      province: address?.province || savedLocation.province || "",
+      city: address?.city || savedLocation.city || "",
+      district: address?.district || savedLocation.district || "",
+      detail: address?.detail || savedLocation.detail || "",
+      name: address?.name || savedAddress.name || state.user.name,
+      phone: address?.phone || savedAddress.phone || state.user.phone,
+      text: address?.text || [address?.province || savedLocation.province, address?.city || savedLocation.city, address?.district || savedLocation.district, address?.detail || savedLocation.detail].filter(Boolean).join("") || (sameProvince ? savedAddress.text : "") || ""
+    };
+    const shipping = quoteShipping(items, orderAddress, state);
+    const shippingFee = shipping.fee;
     const commissionSnapshot = createCommissionSnapshot(state, state.user.id, subtotal - totalDiscount, attribution);
     const order = {
       id: uid("M"),
       status: "pending_payment",
       createdAt: nowText(),
       expiresAt: "30 分钟内",
-      address: address || { name: state.user.name, phone: state.user.phone, text: "上海市徐汇区漕溪北路 88 号" },
+      address: orderAddress,
       userId: state.user.id,
       items,
       subtotal,
@@ -295,6 +346,7 @@
       discount: totalDiscount,
       couponClaimId,
       shippingFee,
+      shippingSnapshot: shipping,
       total: cents(Math.max(0, subtotal - totalDiscount + shippingFee)),
       paymentMethod: "微信支付",
       remark,
@@ -1416,6 +1468,7 @@
     accountSummary,
     resolveReferralChain,
     resolveShareToken,
+    quoteShipping,
     releaseMaturedCommissions,
     findOrder,
     createOrder,

@@ -170,6 +170,8 @@
     const item = product || { id: "", spuId: "", name: "", subtitle: "", price: 0, original: 0, stock: 0, parent: state.zones[0]?.id || "digital", category: state.zones[0]?.subcats?.[0]?.id || "phones", tags: [], status: "on", skus: [{ specs: [{ name: "版本", value: "标准版" }], label: "版本=标准版", price: 0, originalPrice: 0, stock: 0, status: "on" }] };
     const parentOptions = state.zones.map(zone => `<option value="${esc(zone.id)}" ${item.parent === zone.id ? "selected" : ""}>${esc(zone.name)}</option>`).join("");
     const subcatOptions = state.zones.find(zone => zone.id === item.parent)?.subcats || [];
+    const selectedShippingTemplateId = item.shippingTemplateId || state.shippingTemplates?.[0]?.id || "";
+    const shippingTemplateOptions = (state.shippingTemplates || []).map(template => `<option value="${esc(template.id)}" ${template.id === selectedShippingTemplateId ? "selected" : ""}>${esc(template.name)}</option>`).join("");
     const tagOptions = Object.entries(tagNames).map(([key, name]) => `<label style="display:flex;align-items:center;gap:5px"><input type="checkbox" name="tags" value="${key}" ${(item.tags || []).includes(key) ? "checked" : ""}>${name}</label>`).join("");
     const skuRows = (item.skus || []).map(sku => `<div class="sku-editor-row" data-sku-row>
       <label class="field"><span>规格组合</span><input data-sku-specs required value="${esc(sku.label || sku.specs?.map(spec => `${spec.name}=${spec.value}`).join(" / ") || "版本=标准版")}" placeholder="颜色=曜石黑 / 容量=512GB"></label>
@@ -189,6 +191,7 @@
           <label class="field">一级分类<select name="parent">${parentOptions}</select></label>
           <label class="field">二级分类<select name="category">${subcatOptions.map(option => `<option value="${esc(option.id)}" ${item.category === option.id ? "selected" : ""}>${esc(option.name)}</option>`).join("")}</select></label>
           <label class="field">SPU 状态<select name="status"><option value="on" ${item.status === "on" ? "selected" : ""}>销售中</option><option value="off" ${item.status === "off" ? "selected" : ""}>已下架</option></select></label>
+          <label class="field">配送模板<select name="shippingTemplateId"><option value="">使用平台默认配送</option>${shippingTemplateOptions}</select><small class="inline-help">运费按收货省份及模板规则在小程序结算时计算</small></label>
           <div class="field">首页标签<div class="product-tag-options">${tagOptions}</div></div>
         </div>
       </section>
@@ -292,6 +295,7 @@
         detailIntro: String(form.get("detailIntro") || "").trim() || `${name} ${String(form.get("subtitle") || "").trim()}。精选品质与实用设计，为日常使用带来可靠体验。`,
         detailImages,
         reviews: item.reviews || [],
+        shippingTemplateId: String(form.get("shippingTemplateId") || state.shippingTemplates?.[0]?.id || ""),
         parent,
         category: form.get("category"),
         tags: form.getAll("tags"),
