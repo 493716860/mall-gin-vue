@@ -329,26 +329,40 @@
       return;
     }
     const skus = (product.skus || []).filter(sku => sku.status === "on");
-    const currentSku = skus.find(sku => sku.id === detailSkuId) || skus[0];
+    const currentSku = skus.find(sku => sku.id === detailSkuId) || skus.find(sku => Number(sku.stock) > 0) || skus[0];
     if (!currentSku) {
       miniShell({ pageTitle: "商品详情", content: `<div class="empty-state"><strong>暂时无可售规格</strong><a class="primary-btn small" href="mini-shop.html">返回商城</a></div>` });
       return;
     }
     detailSkuId = currentSku.id;
     detailQty = Math.min(Math.max(1, detailQty), Math.max(1, Number(currentSku.stock || 0)));
-    const gallery = product.gallery?.length ? product.gallery : [product.image];
+    const productGallery = product.gallery?.length ? product.gallery : [product.image];
+    const gallery = currentSku.image && currentSku.image !== productGallery[0]
+      ? [currentSku.image, ...productGallery.filter(src => src !== currentSku.image)]
+      : productGallery;
     detailGalleryIndex = Math.min(detailGalleryIndex, gallery.length - 1);
     const galleryImg = gallery[detailGalleryIndex] || product.image;
     const ranked = [...state.products].filter(item => item.status === "on").sort((a, b) => Number(b.salesCount || 0) - Number(a.salesCount || 0));
     const rank = ranked.findIndex(item => item.id === product.id);
     const topProducts = ranked.slice(0, 10);
     const reviews = product.reviews || [];
+    const skuSpecs = sku => sku.specs?.length ? sku.specs : [{ name: "版本", value: "标准版" }];
+    const selectedSpecs = Object.fromEntries(skuSpecs(currentSku).map(spec => [spec.name, spec.value]));
     const selectedAddress = state.selectedAddress || state.addresses?.find(item => item.isDefault) || state.addresses?.[0];
     const addressLine = selectedAddress
       ? `${selectedAddress.province || ""}${selectedAddress.city || ""}${selectedAddress.district || ""}${selectedAddress.detail || ""}`
       : "请选择收货地址";
     const galleryThumbs = gallery.map((src, index) => `<button class="detail-thumb ${index === detailGalleryIndex ? "active" : ""}" type="button" data-action="gallery-image" data-index="${index}" aria-label="查看第 ${index + 1} 张商品图片"><img src="${esc(src)}" alt=""></button>`).join("");
-    const skuButtons = skus.map(sku => `<button type="button" class="detail-sku ${sku.id === currentSku.id ? "active" : ""}" data-action="select-sku" data-sku-id="${esc(sku.id)}" ${Number(sku.stock) <= 0 ? "disabled" : ""}>${esc(sku.label || sku.specs?.map(spec => spec.value).join(" / ") || "标准版")}${Number(sku.stock) <= 0 ? " · 售罄" : ""}</button>`).join("");
+    const specNames = [...new Set(skus.flatMap(sku => skuSpecs(sku).map(spec => spec.name)))];
+    const skuOptions = specNames.map(specName => {
+      const values = [...new Set(skus.flatMap(sku => skuSpecs(sku).filter(spec => spec.name === specName).map(spec => spec.value)))];
+      return `<div class="detail-spec-group"><strong>${esc(specName)}</strong><div class="detail-sku-list">${values.map(value => {
+        const candidate = skus.find(sku => skuSpecs(sku).some(spec => spec.name === specName && spec.value === value)
+          && skuSpecs(sku).every(spec => spec.name === specName || selectedSpecs[spec.name] === spec.value));
+        const soldOut = !candidate || Number(candidate.stock) <= 0;
+        return `<button type="button" class="detail-sku ${selectedSpecs[specName] === value ? "active" : ""}" data-action="select-spec" data-spec-name="${esc(specName)}" data-spec-value="${esc(value)}" ${soldOut ? "disabled" : ""}>${esc(value)}${soldOut ? " · 售罄" : ""}</button>`;
+      }).join("")}</div></div>`;
+    }).join("");
     const recommendations = [...state.products].filter(item => item.id !== product.id && item.status === "on" && (item.parent === product.parent || item.tags?.includes("recommend"))).slice(0, 4);
     const rankCopy = rank >= 0 && rank < 10 ? `销量榜 TOP ${rank + 1}` : "品质精选";
     miniShell({
@@ -364,10 +378,13 @@
           <div class="detail-price-line"><strong>${money(currentSku.price)}</strong>${Number(currentSku.originalPrice || product.original) > Number(currentSku.price) ? `<del>${money(currentSku.originalPrice || product.original)}</del>` : ""}<span class="detail-rank">${esc(rankCopy)}</span></div>
           <div class="detail-sales-line"><span>已售 ${Number(product.salesCount || 0).toLocaleString()} 件</span><span>剩余库存 ${Number(currentSku.stock || 0)} 件</span><span>${Number(product.rating || 4.8).toFixed(1)} 分</span></div>
         </section>
-        <section class="detail-title-block"><div class="detail-tags">${productTags(product)}</div><h1>${esc(product.name)}</h1><p>${esc(product.subtitle || "")}</p><span class="detail-spu-id">SPU ${esc(product.spuId || product.id)}</span></section>
+        <section class="detail-title-block"><div class="detail-tags">${productTags(product)}</div><h1>${esc(product.name)}</h1><p>${esc(product.subtitle || "")}</p>
+          <div class="detail-title-actions"><span class="detail-spu-id">SPU ${esc(product.spuId || product.id)}</span><button type="button" class="detail-share-button" data-action="share-product">${icon("share")}<span>分享</span></button></div>
+        </section>
         <section class="detail-card">
           <div class="detail-row-head"><strong>选择规格</strong><span>${esc(currentSku.label || "标准版")}</span></div>
-          <div class="detail-sku-list">${skuButtons}</div>
+          <div class="detail-spec-groups">${skuOptions}</div>
+          <div class="detail-selected-stock">当前规格剩余 ${Number(currentSku.stock || 0)} 件</div>
           <div class="detail-row-head detail-quantity"><strong>购买数量</strong><div class="stepper"><button type="button" data-action="detail-qty" data-delta="-1" aria-label="减少数量">−</button><output>${detailQty}</output><button type="button" data-action="detail-qty" data-delta="1" aria-label="增加数量">＋</button></div></div>
         </section>
         <button class="detail-card detail-address" type="button" data-action="choose-address">
@@ -375,8 +392,9 @@
         </button>
         <section class="detail-service"><span>✓ 正品保障</span><span>✓ 7 天退换</span><span>✓ 快速配送</span></section>
         <nav class="detail-anchor-nav"><a href="#detail-top10">销量榜</a><a href="#detail-reviews">评价 ${Number(product.reviewCount || 0).toLocaleString()}</a><a href="#detail-description">商品详情</a><a href="#detail-related">推荐商品</a></nav>
-        <section class="detail-top10" id="detail-top10">
-          <div class="detail-section-title"><h2>热销商品 TOP 10</h2><span>共 ${topProducts.length} 款在售</span></div>
+        <details class="detail-top10" id="detail-top10">
+          <summary class="detail-top10-summary"><span><strong>热销商品 TOP 10</strong><small>按已售数量排序 · 共 ${topProducts.length} 款</small></span><span class="detail-top10-chevron" aria-hidden="true"></span></summary>
+          <div class="detail-top10-body">
           <ol class="detail-top10-list">${topProducts.map((item, index) => {
             const itemPrice = Math.min(...(item.skus || []).filter(sku => sku.status === "on").map(sku => Number(sku.price)).filter(Number.isFinite), Number(item.price || 0));
             return `<li class="detail-top10-item ${item.id === product.id ? "current" : ""}">
@@ -390,7 +408,8 @@
             </li>`;
           }).join("")}</ol>
           <p class="detail-top10-note">销量数据为本地原型演示数据，正式环境应由订单数据实时汇总。</p>
-        </section>
+          </div>
+        </details>
         <section class="detail-card detail-reviews" id="detail-reviews">
           <div class="detail-section-title"><h2>用户评价</h2><a href="#detail-reviews">好评率 98%　›</a></div>
           <div class="detail-rating"><strong>${Number(product.rating || 4.8).toFixed(1)}</strong><span>★★★★★</span><small>${Number(product.reviewCount || 0).toLocaleString()} 条评价</small></div>
@@ -441,6 +460,70 @@
     });
   }
 
+  function openProductShare() {
+    const product = productById(params.get("id"));
+    const sku = product?.skus?.find(item => item.id === detailSkuId) || product?.skus?.[0];
+    if (!product || !sku) return toast("商品信息暂不可分享");
+    const backdrop = openModal("分享商品", `<div class="product-share-dialog">
+      <p class="product-share-intro">好友打开商品链接后，会直接进入此商品详情页。</p>
+      <div class="product-share-options">
+        <button type="button" data-share-channel="wechat_friend"><span class="share-option-mark friend">微</span><strong>微信好友</strong><small>复制链接后粘贴发送</small></button>
+        <button type="button" data-share-channel="wechat_moments"><span class="share-option-mark moments">圈</span><strong>朋友圈</strong><small>复制链接后发布到朋友圈</small></button>
+        <button type="button" data-share-channel="poster"><span class="share-option-mark poster">海</span><strong>商品海报</strong><small>预览后打印或保存</small></button>
+      </div>
+      <div class="share-result" aria-live="polite"></div>
+      <p class="product-share-foot">分享链接包含商品详情地址和来源标识；本原型模拟链接跳转与来源记录。</p>
+    </div>`, `<button type="button" class="secondary-btn" data-modal-close>关闭</button>`);
+    const result = backdrop.querySelector(".share-result");
+    const copyLink = async input => {
+      input.focus();
+      input.select();
+      try {
+        if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(input.value);
+        else if (!document.execCommand?.("copy")) throw new Error("clipboard unavailable");
+        toast("商品链接已复制");
+      } catch {
+        toast("请长按链接复制");
+      }
+    };
+    backdrop.querySelectorAll("[data-share-channel]").forEach(button => {
+      button.addEventListener("click", () => {
+        try {
+          const channel = button.dataset.shareChannel;
+          const token = window.MallOps.createShareToken({ productId: product.id, channel });
+          const url = new URL("mini-product.html", location.href);
+          url.searchParams.set("id", product.id);
+          url.searchParams.set("sku", sku.id);
+          url.searchParams.set("share", token.token);
+          const link = url.href;
+          if (channel === "poster") {
+            backdrop.classList.add("poster-print-open");
+            result.innerHTML = `<article class="product-poster">
+                <div class="product-poster-brand"><span>MI SELECT</span><small>品质好物 · 值得分享</small></div>
+                <img src="${esc(sku.image || product.gallery?.[0] || product.image)}" alt="${esc(product.name)}">
+                <div class="product-poster-copy"><small>为你精选</small><h2>${esc(product.name)}</h2><p>${esc(product.subtitle || "")}</p>
+                  <strong>${money(sku.price)}</strong><span>规格：${esc(sku.label || "标准版")}</span></div>
+                <div class="product-poster-link">${esc(link)}</div>
+              </article>
+              <input class="share-poster-url" type="url" readonly value="${esc(link)}" aria-label="海报商品链接">
+              <div class="share-poster-controls"><button type="button" class="secondary-btn" data-copy-share>复制商品链接</button><button type="button" class="primary-btn small" data-print-poster>打印 / 保存海报</button></div>`;
+          } else {
+            backdrop.classList.remove("poster-print-open");
+            const channelName = channel === "wechat_moments" ? "朋友圈" : "微信好友";
+            result.innerHTML = `<div class="share-link-result"><strong>${channelName}商品链接已生成</strong><p>复制链接后粘贴到${channelName}；好友点击即可进入此商品详情。</p>
+                <label class="field">商品详情链接<input type="url" readonly value="${esc(link)}"></label>
+                <button type="button" class="primary-btn small" data-copy-share>复制链接</button></div>`;
+          }
+          const copyButton = result.querySelector("[data-copy-share]");
+          copyButton?.addEventListener("click", () => copyLink(result.querySelector('input[type="url"]')));
+          result.querySelector("[data-print-poster]")?.addEventListener("click", () => window.print());
+        } catch (error) {
+          toast(error.message || "暂时无法生成分享链接");
+        }
+      });
+    });
+  }
+
   root.addEventListener("click", event => {
     const control = event.target.closest("[data-action]");
     if (!control) return;
@@ -451,6 +534,8 @@
       addToCart(control.dataset.id, control.dataset.skuId || "");
     } else if (action === "detail") {
       showProduct(control.dataset.id);
+    } else if (action === "share-product") {
+      openProductShare();
     } else if (action === "modal-add-cart") {
       addToCart(control.dataset.id, control.dataset.skuId || "");
       closeModal();
@@ -460,6 +545,20 @@
     } else if (action === "select-sku") {
       detailSkuId = control.dataset.skuId;
       detailQty = 1;
+      renderProductDetail();
+    } else if (action === "select-spec") {
+      const product = productById(params.get("id"));
+      const selectedSku = product?.skus?.find(item => item.id === detailSkuId);
+      const selected = Object.fromEntries((selectedSku?.specs || []).map(spec => [spec.name, spec.value]));
+      const nextSku = product?.skus?.filter(item => item.status === "on").find(item =>
+        (item.specs || []).some(spec => spec.name === control.dataset.specName && spec.value === control.dataset.specValue)
+        && (item.specs || []).every(spec => spec.name === control.dataset.specName
+          || selected[spec.name] === spec.value)
+        && Number(item.stock) > 0);
+      if (!nextSku) return toast("该规格组合暂不可售");
+      detailSkuId = nextSku.id;
+      detailQty = 1;
+      detailGalleryIndex = 0;
       renderProductDetail();
     } else if (action === "detail-qty") {
       const product = productById(params.get("id"));

@@ -22,6 +22,7 @@
     sun: '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>',
     grid: '<rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect>',
     plus: '<path d="M12 5v14M5 12h14"></path>',
+    share: '<circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="m8.7 10.7 6.6-4.4m-6.6 7.4 6.6 4.4"></path>',
     arrow: '<path d="M5 12h14m-6-6 6 6-6 6"></path>',
     chevron: '<path d="m9 18 6-6-6-6"></path>',
     close: '<path d="m6 6 12 12M18 6 6 18"></path>',

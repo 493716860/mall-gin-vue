@@ -17,7 +17,13 @@
         category: "phones",
         tags: ["top", "recommend"],
         status: "on",
-        image: image("Premium titanium flagship smartphone in pearl silver, rear camera detail, clean white studio product photography, subtle warm gray shadow, centered, no text")
+        image: image("Premium titanium flagship smartphone in pearl silver, rear camera detail, clean white studio product photography, subtle warm gray shadow, centered, no text"),
+        skus: [
+          { id: "p01-sku-001", specs: [{ name: "颜色", value: "曜石黑" }, { name: "容量", value: "256GB" }], label: "曜石黑 / 256GB", price: 6199, originalPrice: 6699, stock: 56, salesCount: 1120, image: image("Obsidian black titanium flagship smartphone rear camera close-up, premium white studio ecommerce photography, no text"), status: "on" },
+          { id: "p01-sku-silver-256", specs: [{ name: "颜色", value: "月光银" }, { name: "容量", value: "256GB" }], label: "月光银 / 256GB", price: 6199, originalPrice: 6699, stock: 32, salesCount: 760, image: image("Pearl silver titanium flagship smartphone rear camera close-up, premium white studio ecommerce photography, no text"), status: "on" },
+          { id: "p01-sku-black-512", specs: [{ name: "颜色", value: "曜石黑" }, { name: "容量", value: "512GB" }], label: "曜石黑 / 512GB", price: 6799, originalPrice: 7299, stock: 24, salesCount: 520, image: image("Obsidian black titanium flagship smartphone rear camera close-up, premium white studio ecommerce photography, no text"), status: "on" },
+          { id: "p01-sku-silver-512", specs: [{ name: "颜色", value: "月光银" }, { name: "容量", value: "512GB" }], label: "月光银 / 512GB", price: 6799, originalPrice: 7299, stock: 16, salesCount: 280, image: image("Pearl silver titanium flagship smartphone rear camera close-up, premium white studio ecommerce photography, no text"), status: "on" }
+        ]
       },
       {
         id: "p02",
@@ -30,7 +36,12 @@
         category: "audio",
         tags: ["top", "new"],
         status: "on",
-        image: image("Minimal white wireless earbuds and compact charging case, premium studio product photography, soft white background, warm gray shadow, no text")
+        image: image("Minimal white wireless earbuds and compact charging case, premium studio product photography, soft white background, warm gray shadow, no text"),
+        skus: [
+          { id: "p02-sku-001", specs: [{ name: "颜色", value: "云岩白" }], label: "云岩白", price: 1299, originalPrice: 1499, stock: 38, salesCount: 1000, image: image("White wireless earbuds and compact charging case, premium studio product photograph on soft white background, no text"), status: "on" },
+          { id: "p02-sku-black", specs: [{ name: "颜色", value: "钛金黑" }], label: "钛金黑", price: 1299, originalPrice: 1499, stock: 29, salesCount: 620, image: image("Graphite black wireless earbuds and compact charging case, premium studio product photograph on soft white background, no text"), status: "on" },
+          { id: "p02-sku-blue", specs: [{ name: "颜色", value: "冰川蓝" }], label: "冰川蓝", price: 1349, originalPrice: 1549, stock: 17, salesCount: 320, image: image("Ice blue wireless earbuds and compact charging case, premium studio product photograph on soft white background, no text"), status: "on" }
+        ]
       },
       {
         id: "p03",
@@ -95,7 +106,13 @@
         category: "shoes",
         tags: ["top"],
         status: "on",
-        image: image("Minimal white and pale gray running shoe in profile, premium athletic footwear studio photography, clean white backdrop, no logo no text")
+        image: image("Minimal white and pale gray running shoe in profile, premium athletic footwear studio photography, clean white backdrop, no logo no text"),
+        skus: [
+          { id: "p07-sku-001", specs: [{ name: "尺码", value: "39" }], label: "尺码 39", price: 399, originalPrice: 459, stock: 20, salesCount: 150, status: "on" },
+          { id: "p07-sku-40", specs: [{ name: "尺码", value: "40" }], label: "尺码 40", price: 399, originalPrice: 459, stock: 28, salesCount: 210, status: "on" },
+          { id: "p07-sku-41", specs: [{ name: "尺码", value: "41" }], label: "尺码 41", price: 399, originalPrice: 459, stock: 27, salesCount: 220, status: "on" },
+          { id: "p07-sku-42", specs: [{ name: "尺码", value: "42" }], label: "尺码 42", price: 399, originalPrice: 459, stock: 22, salesCount: 140, status: "on" }
+        ]
       },
       {
         id: "p08",
@@ -121,7 +138,13 @@
         category: "wearables",
         tags: ["top", "recommend"],
         status: "on",
-        image: image("Minimal dark graphite smartwatch with a clean round display and soft woven strap, premium ecommerce studio photography, pale warm background, no text")
+        image: image("Minimal dark graphite smartwatch with a clean round display and soft woven strap, premium ecommerce studio photography, pale warm background, no text"),
+        skus: [
+          { id: "p09-sku-001", specs: [{ name: "表带颜色", value: "曜石黑" }, { name: "表盘尺寸", value: "42mm" }], label: "曜石黑 / 42mm", price: 699, originalPrice: 799, stock: 24, salesCount: 110, image: image("Graphite black smartwatch with woven strap and round display, premium ecommerce studio photography, pale warm background, no text"), status: "on" },
+          { id: "p09-sku-silver-42", specs: [{ name: "表带颜色", value: "月光银" }, { name: "表盘尺寸", value: "42mm" }], label: "月光银 / 42mm", price: 699, originalPrice: 799, stock: 18, salesCount: 80, image: image("Silver smartwatch with light woven strap and round display, premium ecommerce studio photography, pale warm background, no text"), status: "on" },
+          { id: "p09-sku-black-46", specs: [{ name: "表带颜色", value: "曜石黑" }, { name: "表盘尺寸", value: "46mm" }], label: "曜石黑 / 46mm", price: 799, originalPrice: 899, stock: 17, salesCount: 65, image: image("Graphite black smartwatch with woven strap and round display, premium ecommerce studio photography, pale warm background, no text"), status: "on" },
+          { id: "p09-sku-silver-46", specs: [{ name: "表带颜色", value: "月光银" }, { name: "表盘尺寸", value: "46mm" }], label: "月光银 / 46mm", price: 799, originalPrice: 899, stock: 13, salesCount: 45, image: image("Silver smartwatch with light woven strap and round display, premium ecommerce studio photography, pale warm background, no text"), status: "on" }
+        ]
       },
       {
         id: "p10",
@@ -419,6 +442,8 @@
         salesCount: Number(sku.salesCount ?? demoSales[index] ?? 300),
         status: sku.status || product.status || "on"
       })),
+      price: Math.min(...skuList.filter(sku => sku.status !== "off").map(sku => Number(sku.price)), Number(product.price || 0)),
+      stock: skuList.reduce((sum, sku) => sum + Number(sku.stock || 0), 0),
       salesCount: Number(product.salesCount ?? demoSales[index] ?? 300),
       rating: Number(product.rating || 4.8),
       reviewCount: Number(product.reviewCount || 386 + index * 117),
@@ -447,7 +472,38 @@
       state.products = (state.products || []).map((product, index) => {
         const fallback = defaults.products.find(item => item.id === product.id) || defaults.products[index];
         const gallery = product.gallery?.length ? product.gallery : fallback?.gallery || [product.image].filter(Boolean);
-        const rawSkus = product.skus?.length ? product.skus : [{
+        const legacySeedSku = product.skus?.length === 1
+          && fallback?.skus?.length > 1
+          && product.name === fallback.name
+          && product.skus[0].id === `${product.id}-sku-001`
+          && product.skus[0].label === "标准版";
+        const migratedSkus = legacySeedSku
+          ? (() => {
+            const seedSkus = fallback.skus;
+            const splitTotal = (total, field) => {
+              const weights = seedSkus.map(sku => Math.max(0, Number(sku[field] || 0)));
+              const weightSum = weights.reduce((sum, value) => sum + value, 0) || seedSkus.length;
+              let remaining = Math.max(0, Math.floor(Number(total) || 0));
+              return seedSkus.map((_, skuIndex) => {
+                const part = skuIndex === seedSkus.length - 1
+                  ? remaining
+                  : Math.floor(Number(total || 0) * (weights[skuIndex] || 1) / weightSum);
+                remaining -= part;
+                return part;
+              });
+            };
+            const oldSku = product.skus[0];
+            const stocks = splitTotal(oldSku.stock ?? product.stock, "stock");
+            const sales = splitTotal(oldSku.salesCount ?? product.salesCount, "salesCount");
+            return seedSkus.map((sku, skuIndex) => ({
+              ...sku,
+              stock: stocks[skuIndex],
+              salesCount: sales[skuIndex],
+              status: oldSku.status || product.status || sku.status
+            }));
+          })()
+          : null;
+        const rawSkus = migratedSkus || (product.skus?.length ? product.skus : [{
           id: `${product.id}-sku-001`,
           spuId: product.spuId || product.id,
           specs: [{ name: "版本", value: "标准版" }],
@@ -458,7 +514,7 @@
           image: gallery[0],
           salesCount: Number(product.salesCount || fallback?.salesCount || 300),
           status: product.status || "on"
-        }];
+        }]);
         const skus = rawSkus.map((sku, skuIndex) => ({
           ...sku,
           id: sku.id || `${product.id}-sku-${String(skuIndex + 1).padStart(3, "0")}`,
