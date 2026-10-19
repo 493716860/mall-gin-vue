@@ -22,6 +22,12 @@
     refunded: "已退款",
     pending: "待审核",
     approved: "已通过",
+    approved_wait_return: "待用户寄回",
+    return_in_transit: "退货运输中",
+    return_received: "退货已签收",
+    refund_processing: "退款处理中",
+    inspection_failed: "验收未通过",
+    refunded: "已退款",
     rejected: "已拒绝",
     settled: "已结算",
     paid: "已打款",
@@ -94,12 +100,29 @@
     state = read();
     const rows = state.afterSales.map(ticket => {
       const order = state.orders.find(item => item.id === ticket.orderId);
-      const actions = ticket.status === "pending" ? `<button class="text-action" data-action="review-after" data-decision="approve" data-id="${esc(ticket.id)}">同意退款</button><button class="text-action danger" data-action="review-after" data-decision="reject" data-id="${esc(ticket.id)}">拒绝</button>` : `<button class="text-action" data-action="view-order" data-id="${esc(ticket.orderId)}">查看订单</button>`;
-      return `<tr><td>${esc(ticket.id)}<small style="display:block;margin-top:4px;color:#a0a3a8">${esc(ticket.createdAt || "")}</small></td><td>${esc(ticket.orderId)}</td><td>${esc(ticket.reason)}<small style="display:block;margin-top:4px;color:#999">${esc(ticket.description || "")}</small></td><td>${money(ticket.amount)}</td><td>${statusTag(ticket.status)}</td><td><div class="row-actions">${actions}</div></td></tr>`;
-    }).join("") || `<tr><td colspan="6"><div class="admin-empty">暂无售后申请</div></td></tr>`;
+      const itemSummary = (ticket.items || []).map(line => `${esc(line.name || order?.items?.[line.orderItemIndex]?.name || "商品")} × ${Number(line.qty || 0)}${line.skuLabel ? ` · ${esc(line.skuLabel)}` : ""}`).join("<br>") || "旧版工单未记录商品明细";
+      const shipment = ticket.returnShipment?.trackingNo
+        ? `<small style="display:block;margin-top:4px;color:#777">${esc(ticket.returnShipment.carrier)} ${esc(ticket.returnShipment.trackingNo)}</small>`
+        : "";
+      const freightPayer = ticket.returnRequired
+        ? `<small style="display:block;margin-top:4px;color:#999">退货运费：${ticket.returnFreightPayer === "merchant" ? "商家承担" : "买家承担"}</small>`
+        : "";
+      const actions = ticket.status === "pending"
+        ? `<button class="text-action" data-action="review-after" data-decision="approve" data-id="${esc(ticket.id)}">${ticket.returnRequired ? "同意退货退款" : "同意退款"}</button><button class="text-action danger" data-action="review-after" data-decision="reject" data-id="${esc(ticket.id)}">拒绝</button>`
+        : ticket.status === "return_in_transit"
+          ? `<button class="text-action" data-action="inspect-return" data-id="${esc(ticket.id)}">验收退货</button>`
+          : `<button class="text-action" data-action="view-order" data-id="${esc(ticket.orderId)}">查看订单</button>`;
+      return `<tr><td>${esc(ticket.id)}<small style="display:block;margin-top:4px;color:#a0a3a8">${esc(ticket.createdAt || "")}</small></td>
+        <td>${esc(ticket.orderId)}<small style="display:block;margin-top:4px;color:#999">${esc(order?.address?.name || "")}</small></td>
+        <td>${itemSummary}${freightPayer}</td><td>${esc(ticket.reason)}<small style="display:block;margin-top:4px;color:#999">${esc(ticket.description || "")}</small>${shipment}</td>
+        <td>${money(ticket.amount)}<small style="display:block;margin-top:4px;color:#999">商品 ${money(ticket.goodsRefundAmount ?? ticket.amount)} · 运费 ${money(ticket.shippingRefundAmount || 0)}</small></td>
+        <td>${statusTag(ticket.status)}${ticket.reviewNote ? `<small style="display:block;margin-top:4px;color:#999">${esc(ticket.reviewNote)}</small>` : ""}</td><td><div class="row-actions">${actions}</div></td></tr>`;
+    }).join("") || `<tr><td colspan="7"><div class="admin-empty">暂无售后申请</div></td></tr>`;
+    const pending = state.afterSales.filter(item => item.status === "pending").length;
+    const waitingInspection = state.afterSales.filter(item => item.status === "return_in_transit").length;
     root.innerHTML = adminShell("aftersales", `${head("售后管理", "审核用户退款申请，审核结果同步更新订单状态与关联分销佣金。")}
-      <div class="stats-row">${stat("售后申请", state.afterSales.length, "累计工单")}${stat("待审核", state.afterSales.filter(item => item.status === "pending").length, "等待运营处理")}${stat("已退款", state.afterSales.filter(item => item.status === "refunded").length, "已完成退款")}${stat("已拒绝", state.afterSales.filter(item => item.status === "rejected").length, "保留审核记录")}</div>
-      ${panel("售后工单", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>工单号</th><th>关联订单</th><th>申请原因 / 描述</th><th>退款金额</th><th>状态</th><th>处理</th></tr></thead><tbody>${rows}</tbody></table></div>`, "审核结果回写用户订单")}`);
+      <div class="stats-row">${stat("售后申请", state.afterSales.length, "累计工单")}${stat("待审核", pending, "等待运营处理")}${stat("待验收", waitingInspection, "退货已寄出")}${stat("已退款", state.afterSales.filter(item => item.status === "refunded").length, "已完成退款")}</div>
+      ${panel("售后工单", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>工单号</th><th>关联订单</th><th>商品 / 数量</th><th>申请原因 / 退货物流</th><th>退款拆分</th><th>状态</th><th>处理</th></tr></thead><tbody>${rows}</tbody></table></div>`, "验收通过后模拟退款、恢复库存并调整积分与佣金")}`);
   }
 
   function renderMarketing() {
@@ -256,9 +279,28 @@
         renderOrders();
       } else if (action === "review-after") {
         const decision = control.dataset.decision;
-        window.MallOps.reviewAfterSale(id, decision, decision === "approve" ? "审核通过，退款原路退回" : "经核实不符合售后规则");
-        toast(decision === "approve" ? "已同意退款，订单及佣金状态同步更新" : "已拒绝售后申请");
+        const ticket = state.afterSales.find(item => item.id === id);
+        window.MallOps.reviewAfterSale(id, decision, decision === "approve"
+          ? ticket?.returnRequired ? "审核通过，请按页面提示寄回商品" : "审核通过，模拟退款已处理"
+          : "经核实不符合售后规则");
+        toast(decision === "approve"
+          ? ticket?.returnRequired ? "已同意退货退款，等待用户寄回" : "已同意退款，订单及佣金状态同步更新"
+          : "已拒绝售后申请");
         renderAfterSales();
+      } else if (action === "inspect-return") {
+        const backdrop = openModal("退货验收", `<form id="return-inspection-form"><div class="rule-list"><div>确认已收到用户寄回商品，并检查商品状态。</div></div>
+          <label class="field" style="margin-top:12px">验收结果<select name="decision"><option value="accepted">验收通过</option><option value="rejected">验收未通过</option></select></label>
+          <label class="field" style="margin-top:10px">验收备注<textarea name="note" rows="3" placeholder="记录商品完好、缺件或不符合退货要求等"></textarea></label></form>`, `<button class="secondary-btn" data-modal-close>取消</button><button class="primary-btn small" data-action="submit-return-inspection">确认验收</button>`);
+        backdrop.querySelector("[data-action='submit-return-inspection']").addEventListener("click", () => {
+          const formElement = backdrop.querySelector("#return-inspection-form");
+          if (!formElement.reportValidity()) return;
+          const form = new FormData(formElement);
+          const accepted = form.get("decision") === "accepted";
+          window.MallOps.confirmReturnReceipt(id, { accepted, note: form.get("note") });
+          closeModal();
+          toast(accepted ? "验收通过，模拟退款和库存恢复已完成" : "已记录验收未通过");
+          renderAfterSales();
+        });
       } else if (action === "view-order" || action === "view-track") {
         const order = state.orders.find(item => item.id === id);
         const lines = (order?.tracking || []).map(item => `<div class="list-link"><span>${esc(item.time)}　${esc(item.text)}</span><span>${esc(item.place || "")}</span></div>`).join("");

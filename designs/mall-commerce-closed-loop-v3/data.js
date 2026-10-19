@@ -41,7 +41,7 @@
         status: "on",
         image: image("Minimal white wireless earbuds and compact charging case, premium studio product photography, soft white background, warm gray shadow, no text"),
         skus: [
-          { id: "p02-sku-001", specs: [{ name: "颜色", value: "云岩白" }], label: "云岩白", price: 1299, originalPrice: 1499, stock: 38, salesCount: 1000, image: image("White wireless earbuds and compact charging case, premium studio product photograph on soft white background, no text"), status: "on" },
+          { id: "p02-sku-001", specs: [{ name: "颜色", value: "云岩白" }], label: "云岩白", price: 1299, originalPrice: 1499, stock: 38, salesCount: 1000, image: image("White wireless earbuds and compact charging case, premium studio product photograph on soft white background, no text"), memberPrices: { silver: 1249, gold: 1199, black: 1149 }, status: "on" },
           { id: "p02-sku-black", specs: [{ name: "颜色", value: "钛金黑" }], label: "钛金黑", price: 1299, originalPrice: 1499, stock: 29, salesCount: 620, image: image("Graphite black wireless earbuds and compact charging case, premium studio product photograph on soft white background, no text"), status: "on" },
           { id: "p02-sku-blue", specs: [{ name: "颜色", value: "冰川蓝" }], label: "冰川蓝", price: 1349, originalPrice: 1549, stock: 17, salesCount: 320, image: image("Ice blue wireless earbuds and compact charging case, premium studio product photograph on soft white background, no text"), status: "on" }
         ]
@@ -164,11 +164,13 @@
       }
     ],
     tiers: [
-      { id: "normal", name: "普通会员", points: 0, discount: 100, benefits: "基础购物权益 · 积分回馈" },
-      { id: "silver", name: "银卡会员", points: 1000, discount: 98, benefits: "全场 98 折 · 生日积分加赠" },
-      { id: "gold", name: "金卡会员", points: 5000, discount: 90, benefits: "全场 9 折 · 每月专属礼券" },
-      { id: "black", name: "黑卡会员", points: 12000, discount: 85, benefits: "全场 85 折 · 新品优先购" }
+      { id: "normal", name: "普通会员", points: 0, discount: 100, pointsMultiplier: 1, benefits: "基础购物权益 · 积分回馈" },
+      { id: "silver", name: "银卡会员", points: 1000, discount: 98, pointsMultiplier: 1.2, benefits: "全场 98 折 · 积分 1.2 倍 · 生日月优惠券" },
+      { id: "gold", name: "金卡会员", points: 5000, discount: 90, pointsMultiplier: 1.5, benefits: "全场 9 折 · 积分 1.5 倍 · 生日月优惠券" },
+      { id: "black", name: "黑卡会员", points: 12000, discount: 85, pointsMultiplier: 2, benefits: "全场 85 折 · 积分 2 倍 · 生日月优惠券" }
     ],
+    membershipSettings: { birthdayCouponId: "C20" },
+    birthdayCouponIssues: [],
     banners: [
       { id: "b01", title: "影像旗舰 新一代", subtitle: "专业光学体验，记录每个精彩瞬间", label: "新品上市", target: "mini-shop.html?category=phones", image: image("Premium silver flagship smartphone on clean pale gray studio set with restrained orange light accent, wide ecommerce hero photography, no text", "landscape_16_9"), enabled: true },
       { id: "b02", title: "让家更清新", subtitle: "智能净化，舒适呼吸每一天", label: "品质生活", target: "mini-zone.html?zone=home", image: image("Minimal white air purifier in calm modern living room, pale warm gray interior, wide premium ecommerce hero photo, no text", "landscape_16_9"), enabled: true },
@@ -321,8 +323,8 @@
         total: 2598,
         paymentMethod: "微信支付",
         remark: "",
-        referralSnapshot: { promoterIds: ["u1001"], sourceTokenId: "SH-CHEN-01", channel: "poster", boundAtOrder: false, ruleVersion: "CR-2026-03" },
-        commissionSnapshot: [{ promoterId: "u1001", relationId: "RR-1003", level: 1, basis: 2598, rate: 5, amount: 129.9, tierId: "silver", ruleVersion: "CR-2026-03", shareTokenId: "SH-CHEN-01" }]
+        referralSnapshot: { promoterIds: ["u1001"], sourceTokenId: "SH-LIN-01", channel: "wechat_friend", boundAtOrder: false, ruleVersion: "CR-2026-03" },
+        commissionSnapshot: [{ promoterId: "u1001", relationId: "RR-1003", level: 1, basis: 2598, rate: 6, amount: 155.88, tierId: "silver", ruleVersion: "CR-2026-03", shareTokenId: "SH-LIN-01" }]
       }
     ],
     afterSales: [
@@ -355,9 +357,7 @@
     ],
     groupParticipations: [{ id: "GP01", dealId: "GD01", groupCode: "T8K2", joined: 2, target: 3, status: "assembling", createdAt: "2026-10-19 09:42" }],
     commissions: [
-      { id: "CM001", orderId: "M202610150012", userId: "u1001", amount: 19.6, originalAmount: 19.6, basis: 392, level: 1, rate: 5, ruleVersion: "CR-2026-03", status: "frozen", createdAt: "2026-10-17 18:10", releaseAt: "2026-10-24 18:10" },
-      { id: "CM002", orderId: "M202610180024", userId: "u1001", amount: 64.95, originalAmount: 64.95, basis: 1299, level: 1, rate: 5, ruleVersion: "CR-2026-03", status: "pending", createdAt: "2026-10-18 16:24" },
-      { id: "CM003", orderId: "M202610120026", userId: "u1001", amount: 129.9, originalAmount: 129.9, basis: 2598, level: 1, rate: 5, ruleVersion: "CR-2026-03", status: "available", createdAt: "2026-10-15 18:30", releasedAt: "2026-10-18 09:00" }
+      { id: "CM003", orderId: "M202610120026", userId: "u1001", amount: 155.88, originalAmount: 155.88, basis: 2598, level: 1, rate: 6, ruleVersion: "CR-2026-03", status: "available", createdAt: "2026-10-15 18:30", releasedAt: "2026-10-18 09:00" }
     ],
     withdrawals: [],
     promoterApplications: [
@@ -396,15 +396,12 @@
       { id: "TR-2026-03", name: "夏季推广员成长规则", status: "archived", effectiveAt: "2026-07-01 00:00", createdAt: "2026-06-20 10:00", note: "历史规则只读", tiers: [] }
     ],
     commissionRuleVersions: [
-      { id: "CR-2026-03", name: "秋季分销政策", status: "active", effectiveAt: "2026-10-01 00:00", createdAt: "2026-09-25 16:00", tiers: { standard: [5, 2, 1], silver: [6, 2.5, 1.2], gold: [7, 3, 1.5] }, scope: "全场商品", note: "按订单商品实付净额计佣，不含运费" },
+      { id: "CR-2026-03", name: "秋季一级直推政策", status: "active", effectiveAt: "2026-10-01 00:00", createdAt: "2026-09-25 16:00", tiers: { standard: [5], silver: [6], gold: [7] }, scope: "全场商品", note: "仅奖励直接推荐人；按订单商品实付净额计佣，不含运费" },
       { id: "CR-2026-02", name: "夏季分销政策", status: "archived", effectiveAt: "2026-07-01 00:00", createdAt: "2026-06-20 10:00", tiers: { standard: [4, 1.5, 0.5], silver: [5, 2, 1], gold: [6, 2.5, 1.2] }, scope: "全场商品", note: "历史快照只读" }
     ],
     commissionLedger: [
-      { id: "CL-001", commissionId: "CM001", userId: "u1001", type: "commission_accrued", amount: 19.6, direction: "credit", orderId: "M202610150012", level: 1, ruleVersion: "CR-2026-03", idempotencyKey: "order:M202610150012:u1001:1", createdAt: "2026-10-17 18:10" },
-      { id: "CL-002", commissionId: "CM001", userId: "u1001", type: "commission_frozen", amount: 19.6, direction: "credit", orderId: "M202610150012", level: 1, ruleVersion: "CR-2026-03", idempotencyKey: "freeze:CM001", createdAt: "2026-10-17 18:10" },
-      { id: "CL-003", commissionId: "CM002", userId: "u1001", type: "commission_accrued", amount: 64.95, direction: "credit", orderId: "M202610180024", level: 1, ruleVersion: "CR-2026-03", idempotencyKey: "order:M202610180024:u1001:1", createdAt: "2026-10-18 16:24" },
-      { id: "CL-004", commissionId: "CM003", userId: "u1001", type: "commission_accrued", amount: 129.9, direction: "credit", orderId: "M202610120026", level: 1, ruleVersion: "CR-2026-03", idempotencyKey: "order:M202610120026:u1001:1", createdAt: "2026-10-15 18:30" },
-      { id: "CL-005", commissionId: "CM003", userId: "u1001", type: "commission_released", amount: 129.9, direction: "credit", orderId: "M202610120026", level: 1, ruleVersion: "CR-2026-03", idempotencyKey: "release:CM003", createdAt: "2026-10-18 09:00" }
+      { id: "CL-004", commissionId: "CM003", userId: "u1001", type: "commission_accrued", amount: 155.88, direction: "credit", orderId: "M202610120026", level: 1, ruleVersion: "CR-2026-03", idempotencyKey: "order:M202610120026:u1001:1", createdAt: "2026-10-15 18:30" },
+      { id: "CL-005", commissionId: "CM003", userId: "u1001", type: "commission_released", amount: 155.88, direction: "credit", orderId: "M202610120026", level: 1, ruleVersion: "CR-2026-03", idempotencyKey: "release:CM003", createdAt: "2026-10-18 09:00" }
     ],
     payoutChannels: [
       { id: "PC-WX-01", userId: "u1001", type: "wechat_merchant", label: "微信商户出款", maskedAccount: "林* · 微信实名", tokenRef: "payout_token_demo_01", verified: true, status: "active", verifiedAt: "2026-09-20" },
@@ -421,7 +418,7 @@
       { id: "DA-001", actor: "林运营", action: "promoter.approve", targetId: "u1001", reason: "首批合作推广员", createdAt: "2025-06-02 10:00" },
       { id: "DA-002", actor: "系统任务", action: "commission.rule.publish", targetId: "CR-2026-03", reason: "版本发布，历史订单快照不变", createdAt: "2026-10-01 00:00" }
     ],
-    distributionSettings: { maxLevels: 3, freezeDays: 7, minimumPayout: 100, singlePayoutLimit: 5000, dailyPayoutLimit: 10000, autoReviewThreshold: 300, highRiskManualReview: true, payoutChannels: ["wechat_merchant", "bank_transfer"], pendingConfirm: true },
+    distributionSettings: { maxLevels: 1, freezeDays: 7, minimumPayout: 100, singlePayoutLimit: 5000, dailyPayoutLimit: 10000, autoReviewThreshold: 300, highRiskManualReview: true, payoutChannels: ["wechat_merchant", "bank_transfer"], pendingConfirm: true },
     users: [
       { id: "u1001", name: "林间有风", phone: "138****6218", tier: "银卡会员", points: 2680, orders: 12, spend: 8326, distributor: true, status: "active", joinedAt: "2025-04-18" },
       { id: "u1002", name: "周先生", phone: "139****2701", tier: "金卡会员", points: 7380, orders: 26, spend: 18220, distributor: false, status: "active", joinedAt: "2024-12-03" },
@@ -518,10 +515,10 @@
 
   function read() {
     try {
-      const stored = localStorage.getItem(KEY);
+      let stored = localStorage.getItem(KEY);
       if (!stored) {
-        localStorage.setItem(KEY, JSON.stringify(defaults));
-        return JSON.parse(JSON.stringify(defaults));
+        stored = JSON.stringify(defaults);
+        localStorage.setItem(KEY, stored);
       }
       const parsed = JSON.parse(stored);
       const state = { ...JSON.parse(JSON.stringify(defaults)), ...parsed };
@@ -529,8 +526,18 @@
       state.user.authorizations = { ...defaults.user.authorizations, ...(state.user.authorizations || {}) };
       state.user.realName = { ...defaults.user.realName, ...(state.user.realName || {}) };
       state.user.pets ||= JSON.parse(JSON.stringify(defaults.user.pets));
+      state.tiers = (state.tiers || []).map((tier, index) => ({
+        ...tier,
+        pointsMultiplier: Number(tier.pointsMultiplier ?? [1, 1.2, 1.5, 2][index] ?? 1)
+      }));
+      state.membershipSettings ||= JSON.parse(JSON.stringify(defaults.membershipSettings));
+      state.birthdayCouponIssues ||= [];
       state.legalDocuments ||= JSON.parse(JSON.stringify(defaults.legalDocuments));
       state.shippingTemplates ||= JSON.parse(JSON.stringify(defaults.shippingTemplates));
+      state.distributionSettings = { ...defaults.distributionSettings, ...(state.distributionSettings || {}), maxLevels: 1 };
+      state.commissionRuleVersions = (state.commissionRuleVersions || []).map(rule => rule.status === "active"
+        ? { ...rule, tiers: Object.fromEntries(Object.entries(rule.tiers || {}).map(([tierId, rates]) => [tierId, (Array.isArray(rates) ? rates : [rates]).slice(0, 1)])) }
+        : rule);
       state.orders ||= [];
       if (!state.orders.some(order => order.id === "M202610140006")) {
         const reviewDemoOrder = defaults.orders.find(order => order.id === "M202610140006");
@@ -590,6 +597,7 @@
           label: sku.label || (sku.specs || [{ value: "标准版" }]).map(spec => spec.value).join(" / "),
           price: Number(sku.price ?? product.price ?? 0),
           originalPrice: Number(sku.originalPrice ?? sku.original ?? sku.price ?? product.price ?? 0),
+          memberPrices: sku.memberPrices ?? fallback?.skus?.find(item => item.id === sku.id)?.memberPrices ?? {},
           stock: Number(sku.stock || 0),
           image: sku.image || gallery[0],
           salesCount: Number(sku.salesCount || fallback?.salesCount || 300),
@@ -617,6 +625,94 @@
           stock: skus.reduce((sum, sku) => sum + sku.stock, 0)
         };
       });
+      state.afterSales = Array.isArray(state.afterSales) ? state.afterSales : [];
+      state.afterSales.forEach(ticket => {
+        const order = state.orders.find(item => item.id === ticket.orderId);
+        ticket.userId ||= order?.userId || state.user.id;
+        const legacyAmount = Number(ticket.amount || 0);
+        if (!Array.isArray(ticket.items) || !ticket.items.length) {
+          const goodsNet = Math.max(0, Number(order?.subtotal || 0) - Number(order?.discount || 0));
+          const gross = (order?.items || []).reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0), 0);
+          let remaining = Math.min(legacyAmount, goodsNet);
+          ticket.items = [];
+          for (let index = 0; index < (order?.items || []).length && remaining > 0; index += 1) {
+            const line = order.items[index];
+            const lineGross = Number(line.price || 0) * Number(line.qty || 0);
+            const linePaid = gross ? goodsNet * lineGross / gross : 0;
+            const unitPaid = linePaid / Math.max(1, Number(line.qty || 1));
+            const amount = Math.min(remaining, linePaid);
+            const qty = Math.min(Number(line.qty || 1), Math.max(1, Math.ceil(amount / Math.max(unitPaid, 0.01))));
+            ticket.items.push({
+              orderItemIndex: index,
+              productId: line.productId,
+              skuId: line.skuId || "",
+              skuLabel: line.skuLabel || "",
+              name: line.name,
+              qty,
+              amount
+            });
+            remaining = Math.max(0, remaining - amount);
+          }
+          ticket.goodsRefundAmount = Math.round(Math.min(legacyAmount, goodsNet) * 100) / 100;
+          ticket.shippingRefundAmount = Math.round(Math.max(0, legacyAmount - ticket.goodsRefundAmount) * 100) / 100;
+        } else {
+          ticket.goodsRefundAmount = Number(ticket.goodsRefundAmount ?? ticket.items.reduce((sum, item) => sum + Number(item.amount || 0), 0));
+          ticket.shippingRefundAmount = Number(ticket.shippingRefundAmount || 0);
+        }
+        ticket.amount = Number(ticket.amount ?? Number(ticket.goodsRefundAmount || 0) + Number(ticket.shippingRefundAmount || 0));
+        ticket.returnRequired = Boolean(ticket.returnRequired ?? (ticket.type === "return_refund" || !["to_ship", "pending_payment"].includes(order?.status)));
+        if (ticket.returnRequired && ticket.type === "refund") ticket.type = "return_refund";
+        ticket.returnFreightPayer ||= "buyer";
+        ticket.returnShipment = {
+          carrier: "",
+          trackingNo: "",
+          shippedAt: "",
+          receivedAt: "",
+          inspectionStatus: "pending",
+          restocked: false,
+          ...(ticket.returnShipment || {})
+        };
+        ticket.refund = { status: "not_started", ...(ticket.refund || {}) };
+        if (order) {
+          order.afterSaleIds ||= [];
+          if (!order.afterSaleIds.includes(ticket.id)) order.afterSaleIds.push(ticket.id);
+        }
+      });
+      state.orders.forEach(order => {
+        const related = state.afterSales.filter(ticket => ticket.orderId === order.id);
+        if (related.length && !related.some(ticket => ticket.id === order.afterSaleId)) {
+          order.afterSaleId = related[0].id;
+        }
+      });
+      const selfCommissionIds = new Set(state.commissions.filter(commission =>
+        state.orders.some(order => order.id === commission.orderId && order.userId === commission.userId)
+      ).map(commission => commission.id));
+      if (selfCommissionIds.size) {
+        state.commissions = state.commissions.filter(commission => !selfCommissionIds.has(commission.id));
+        state.commissionLedger = (state.commissionLedger || []).filter(entry => !selfCommissionIds.has(entry.commissionId));
+      }
+      const demoCommission = state.commissions.find(item => item.id === "CM003");
+      if (demoCommission) {
+        demoCommission.rate = 6;
+        demoCommission.amount = 155.88;
+        demoCommission.originalAmount = 155.88;
+      }
+      ["CL-004", "CL-005"].forEach(id => {
+        const entry = (state.commissionLedger || []).find(item => item.id === id);
+        if (entry) entry.amount = 155.88;
+      });
+      const referredDemoOrder = state.orders.find(item => item.id === "M202610120026");
+      if (referredDemoOrder?.userId === "u1003" && referredDemoOrder.commissionSnapshot?.some(item => item.relationId === "RR-1003")) {
+        referredDemoOrder.referralSnapshot = {
+          ...(referredDemoOrder.referralSnapshot || {}),
+          promoterIds: ["u1001"],
+          sourceTokenId: "SH-LIN-01",
+          channel: "wechat_friend"
+        };
+        referredDemoOrder.commissionSnapshot = referredDemoOrder.commissionSnapshot.map(item => item.relationId === "RR-1003"
+          ? { ...item, promoterId: "u1001", level: 1, rate: 6, amount: 155.88, tierId: "silver", shareTokenId: "SH-LIN-01" }
+          : item);
+      }
       return state;
     } catch {
       return JSON.parse(JSON.stringify(defaults));

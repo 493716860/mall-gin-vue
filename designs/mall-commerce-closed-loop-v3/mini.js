@@ -6,6 +6,8 @@
 
   const params = new URLSearchParams(location.search);
   let state = read();
+  window.MallOps.refreshMembershipBenefits();
+  state = read();
   let activeZoneFilter = "all";
   let carouselTimer;
   let detailGalleryIndex = 0;
@@ -34,30 +36,45 @@
   const zoneById = id => state.zones.find(zone => zone.id === id);
   const productById = id => state.products.find(product => product.id === id);
   const currentTier = () => [...state.tiers].sort((a, b) => a.points - b.points).filter(t => Number(state.user?.points ?? state.points) >= t.points).at(-1) || state.tiers[0];
+  const skuMemberPrice = (sku, tier = currentTier()) => {
+    const value = sku?.memberPrices?.[tier?.id];
+    const price = Number(value);
+    return value !== undefined && value !== null && value !== "" && Number.isFinite(price) && price > 0 && price <= Number(sku.price)
+      ? cents(price)
+      : null;
+  };
+  const effectiveSkuPrice = sku => skuMemberPrice(sku) ?? Number(sku?.price || 0);
+  const todayKey = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  };
+  const claimInDate = claim => (!claim.validFrom || todayKey() >= claim.validFrom) && (!claim.expiresAt || todayKey() <= claim.expiresAt);
   const percentOff = discount => Math.max(0, 100 - Number(discount || 100));
   const cents = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
   const addressText = address => [address?.province, address?.city, address?.district, address?.detail].filter(Boolean).join("");
   const selectedAddress = source => source.selectedAddress || source.addresses?.find(item => item.isDefault) || source.addresses?.[0];
 
   function cartPricing(rows, couponId = "", address = selectedAddress(state)) {
-    const subtotal = cents(rows.reduce((sum, { item, sku }) => sum + Number(sku.price) * Number(item.qty), 0));
     const tier = currentTier();
     const memberRate = Number(tier?.discount || 100) / 100;
-    const memberDiscount = cents(subtotal * (1 - memberRate));
-    const claim = state.claimedCoupons?.find(item => (item.claimId || item.id) === couponId && item.status === "available");
+    const subtotal = cents(rows.reduce((sum, { item, sku }) => sum + effectiveSkuPrice(sku) * Number(item.qty), 0));
+    const memberDiscount = cents(rows.reduce((sum, { item, sku }) =>
+      sum + (skuMemberPrice(sku, tier) !== null ? 0 : Number(sku.price) * Number(item.qty) * (1 - memberRate)), 0));
+    const claim = state.claimedCoupons?.find(item =>
+      (item.claimId || item.id) === couponId && item.status === "available" && claimInDate(item));
     const coupon = claim && state.coupons?.find(item => item.id === (claim.couponId || claim.id));
     let couponDiscount = 0;
     const couponValue = Number(coupon?.value);
     if (coupon && subtotal >= Number(coupon.threshold || 0) && Number.isFinite(couponValue) && couponValue > 0
       && (coupon.type !== "rate" || couponValue <= 100)) {
       couponDiscount = coupon.type === "rate"
-        ? cents(subtotal * memberRate * (1 - couponValue / 100))
+        ? cents(Math.max(0, subtotal - memberDiscount) * (1 - couponValue / 100))
         : cents(couponValue);
     }
     const discount = Math.min(subtotal, memberDiscount + couponDiscount);
     const shipping = window.MallOps.quoteShipping(rows.map(({ item, product, sku }) => ({
       productId: product?.id || item?.productId,
-      price: sku?.price,
+      price: effectiveSkuPrice(sku),
       qty: item?.qty
     })), address, state);
     const shippingFee = shipping.fee;
@@ -232,6 +249,10 @@
     const points = Number(state.user?.points ?? state.points);
     const progress = next ? Math.min(100, Math.round((points - current.points) / (next.points - current.points) * 100)) : 100;
     const moneyOff = discount => discount === 100 ? "会员专享价" : `全场 ${Number(discount) / 10} 折`;
+    const birthdayCoupon = state.coupons.find(item => item.id === state.membershipSettings?.birthdayCouponId);
+    const birthdayClaim = (state.claimedCoupons || []).find(item => item.source === "birthday" && Number(item.sourceYear) === new Date().getFullYear());
+    const skuPriceCounts = Object.fromEntries(tiers.map(tier => [tier.id, state.products.reduce((count, product) =>
+      count + (product.skus || []).filter(sku => Number(sku.memberPrices?.[tier.id]) > 0).length, 0)]));
     miniShell({
       active: "membership",
       pageTitle: "会员中心",
@@ -253,9 +274,14 @@
           <div class="benefit-card"><table class="benefit-table"><thead><tr><th>会员权益</th>${tiers.map(tier => `<th class="${tier.id === current.id ? "current-col" : ""}">${esc(tier.name.replace("会员", ""))}</th>`).join("")}</tr></thead>
             <tbody><tr><td>等级门槛</td>${tiers.map(tier => `<td class="${tier.id === current.id ? "current-col" : ""}">${Number(tier.points).toLocaleString()}</td>`).join("")}</tr>
             <tr><td>购物折扣</td>${tiers.map(tier => `<td class="${tier.id === current.id ? "current-col" : ""}">${tier.discount === 100 ? "会员价" : `${Number(tier.discount) / 10} 折`}</td>`).join("")}</tr>
-            <tr><td>积分加赠</td>${tiers.map((tier, i) => `<td class="${tier.id === current.id ? "current-col" : ""}">${i === 0 ? "1 倍" : `${1 + i * .2} 倍`}</td>`).join("")}</tr>
+            <tr><td>积分加赠</td>${tiers.map(tier => `<td class="${tier.id === current.id ? "current-col" : ""}">${Number(tier.pointsMultiplier || 1)} 倍</td>`).join("")}</tr>
+            <tr><td>SKU 专享价</td>${tiers.map(tier => `<td class="${tier.id === current.id ? "current-col" : ""}">${skuPriceCounts[tier.id] || "—"}${skuPriceCounts[tier.id] ? " 款" : ""}</td>`).join("")}</tr>
             <tr><td>专属礼遇</td>${tiers.map((tier, i) => `<td class="${tier.id === current.id ? "current-col" : ""}">${i < 2 ? "—" : i === 2 ? "月礼券" : "新品优先"}</td>`).join("")}</tr></tbody>
           </table></div>
+        </section>
+        <section class="section white-card" style="padding:12px">
+          <div class="section-head"><h2>生日月礼遇</h2><span class="cart-spec">每年一次</span></div>
+          <div class="cart-spec">${birthdayCoupon ? `生日月领取「${esc(birthdayCoupon.name)}」，月底到期。` : "生日券暂未配置。"}${birthdayClaim ? ` 本年度已发放，有效期至 ${esc(birthdayClaim.expiresAt || "月底")}。` : ""}</div>
         </section>
         <section class="section white-card"><a class="list-link" href="mini-points.html"><strong>积分明细</strong><span>查看获取与使用记录 ${icon("chevron")}</span></a>
           <div class="list-link"><span>积分有效期</span><span>积分自获得之日起 12 个月有效</span></div></section>
@@ -272,10 +298,10 @@
       return { item, product, sku };
     }).filter(entry => entry.product && entry.sku);
     const selected = rows.filter(({ item }) => item.selected);
-    const subtotal = selected.reduce((sum, { item, sku }) => sum + Number(sku.price) * item.qty, 0);
+    const subtotal = selected.reduce((sum, { item, sku }) => sum + effectiveSkuPrice(sku) * item.qty, 0);
     const availableCoupons = (state.claimedCoupons || []).filter(claim => {
       const coupon = state.coupons?.find(entry => entry.id === (claim.couponId || claim.id));
-      return claim.status === "available" && coupon && subtotal >= Number(coupon.threshold || 0);
+      return claim.status === "available" && claimInDate(claim) && coupon && subtotal >= Number(coupon.threshold || 0);
     });
     if (!availableCoupons.some(item => (item.claimId || item.id) === state.selectedCartCouponId)) state.selectedCartCouponId = "";
     const deliveryAddress = selectedAddress(state);
@@ -286,9 +312,9 @@
       <div class="cart-thumb"><img src="${sku.image || product.image}" alt="${esc(product.name)}"></div>
       <div class="cart-info"><div class="cart-name">${esc(product.name)}</div>
         ${product.skus?.length > 1 ? `<label class="cart-sku-picker"><span class="sr-only">选择商品规格</span><select data-action="cart-sku" data-id="${esc(product.id)}" data-sku-id="${esc(sku.id)}" aria-label="选择${esc(product.name)}规格">
-          ${product.skus.filter(option => option.status === "on").map(option => `<option value="${esc(option.id)}" ${option.id === sku.id ? "selected" : ""} ${Number(option.stock) <= 0 ? "disabled" : ""}>${esc(option.label || option.specs?.map(spec => spec.value).join(" / ") || "标准版")} · ${money(option.price)}${Number(option.stock) <= 0 ? "（缺货）" : ""}</option>`).join("")}
+          ${product.skus.filter(option => option.status === "on").map(option => `<option value="${esc(option.id)}" ${option.id === sku.id ? "selected" : ""} ${Number(option.stock) <= 0 ? "disabled" : ""}>${esc(option.label || option.specs?.map(spec => spec.value).join(" / ") || "标准版")} · ${money(effectiveSkuPrice(option))}${skuMemberPrice(option) !== null ? "（会员价）" : ""}${Number(option.stock) <= 0 ? "（缺货）" : ""}</option>`).join("")}
         </select></label>` : `<div class="cart-spec">${esc(sku.label || product.subtitle || "标准版")}</div>`}
-        <div class="cart-bottom"><strong class="price" style="font-size:13px">${money(sku.price)}</strong>
+        <div class="cart-bottom"><strong class="price" style="font-size:13px">${money(effectiveSkuPrice(sku))}${skuMemberPrice(sku) !== null ? `<small style="display:block;font-size:9px;color:#888">会员专享价</small>` : ""}</strong>
           <div style="display:flex;align-items:center;gap:7px"><button type="button" class="text-action danger cart-remove" data-action="cart-remove" data-id="${esc(product.id)}" data-sku-id="${esc(sku.id)}" style="display:none">删除</button>
           <div class="stepper"><button type="button" data-action="cart-qty" data-id="${esc(product.id)}" data-sku-id="${esc(sku.id)}" data-delta="-1">−</button><output>${item.qty}</output><button type="button" data-action="cart-qty" data-id="${esc(product.id)}" data-sku-id="${esc(sku.id)}" data-delta="1">＋</button></div></div>
         </div></div></div>`).join("");
@@ -306,7 +332,7 @@
             <div class="cart-coupon-line"><label for="cart-coupon">优惠券</label><select id="cart-coupon" data-action="cart-coupon"><option value="">不使用优惠券</option>${availableCoupons.map(claim => {
               const coupon = state.coupons.find(entry => entry.id === (claim.couponId || claim.id));
               const claimId = claim.claimId || claim.id;
-              return `<option value="${esc(claimId)}" ${claimId === state.selectedCartCouponId ? "selected" : ""}>${esc(coupon.name)}（−${money(coupon.type === "rate" ? cents(pricing.subtotal * (Number(currentTier()?.discount || 100) / 100) * (1 - Number(coupon.value) / 100)) : coupon.value)}）</option>`;
+              return `<option value="${esc(claimId)}" ${claimId === state.selectedCartCouponId ? "selected" : ""}>${esc(coupon.name)}（−${money(coupon.type === "rate" ? cents(Math.max(0, pricing.subtotal - pricing.memberDiscount) * (1 - Number(coupon.value) / 100)) : coupon.value)}）${claim.expiresAt ? ` · ${esc(claim.expiresAt)} 到期` : ""}</option>`;
             }).join("")}</select><span class="discount-value">−${money(pricing.couponDiscount)}</span></div>
             <div><span>配送费</span><span>${pricing.shippingFee ? money(pricing.shippingFee) : "免运费"}</span></div>
           </div>
@@ -1066,6 +1092,7 @@
     const addressLine = selectedAddress
       ? `${selectedAddress.province || ""}${selectedAddress.city || ""}${selectedAddress.district || ""}${selectedAddress.detail || ""}`
       : "请选择收货地址";
+    const detailMemberPrice = skuMemberPrice(currentSku);
     const shippingPreview = window.MallOps.quoteShipping(
       [{ productId: product.id, price: currentSku.price, qty: detailQty }],
       selectedAddress,
@@ -1094,7 +1121,7 @@
           <div class="detail-thumbs">${galleryThumbs}</div>
         </section>
         <section class="detail-price-block">
-          <div class="detail-price-line"><strong>${money(currentSku.price)}</strong>${Number(currentSku.originalPrice || product.original) > Number(currentSku.price) ? `<del>${money(currentSku.originalPrice || product.original)}</del>` : ""}<span class="detail-rank">${esc(rankCopy)}</span></div>
+          <div class="detail-price-line"><strong>${money(detailMemberPrice ?? currentSku.price)}</strong>${detailMemberPrice !== null ? `<span class="tag recommend">${esc(currentTier()?.name || "会员")}专享</span>` : ""}${Number(currentSku.originalPrice || product.original) > Number(currentSku.price) ? `<del>${money(currentSku.originalPrice || product.original)}</del>` : ""}<span class="detail-rank">${esc(rankCopy)}</span></div>
           <div class="detail-sales-line"><span>已售 ${Number(product.salesCount || 0).toLocaleString()} 件</span><span>剩余库存 ${Number(currentSku.stock || 0)} 件</span><span>${Number(product.rating || 4.8).toFixed(1)} 分</span></div>
         </section>
         <section class="detail-title-block"><div class="detail-tags">${productTags(product)}</div><h1>${esc(product.name)}</h1><p>${esc(product.subtitle || "")}</p>

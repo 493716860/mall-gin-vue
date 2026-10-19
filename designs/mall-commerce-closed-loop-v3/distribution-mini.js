@@ -45,14 +45,9 @@
   }
 
   function teamMembers() {
-    const layers = [];
-    let parents = [state.user.id];
-    for (let level = 1; level <= 3; level += 1) {
-      const rows = state.referralRelations.filter(row => parents.includes(row.promoterId) && row.status === "active");
-      layers.push(rows.map(row => ({ ...row, level })));
-      parents = rows.map(row => row.memberId);
-    }
-    return layers.flat();
+    return state.referralRelations
+      .filter(row => row.promoterId === state.user.id && row.status === "active")
+      .map(row => ({ ...row, level: 1 }));
   }
 
   function renderOverview() {
@@ -62,7 +57,7 @@
     const myCommissions = commissions();
     const members = teamMembers();
     const tokens = state.shareTokens.filter(item => item.promoterId === state.user.id && item.status === "active");
-    const recent = myCommissions.slice(0, 3).map(item => `<div class="dist-mini-row"><div><strong>订单 ${esc(item.orderId)}</strong><small>L${Number(item.level || 1)} · ${Number(item.rate || 0)}% · ${esc(item.ruleVersion || "历史规则")}</small></div><div class="dist-mini-right">${tag(item.status)}<strong>${money(item.amount)}</strong></div></div>`).join("");
+    const recent = myCommissions.slice(0, 3).map(item => `<div class="dist-mini-row"><div><strong>订单 ${esc(item.orderId)}</strong><small>${Number(item.level || 1) === 1 ? "直推" : `历史规则 L${Number(item.level)}`} · ${Number(item.rate || 0)}% · ${esc(item.ruleVersion || "历史规则")}</small></div><div class="dist-mini-right">${tag(item.status)}<strong>${money(item.amount)}</strong></div></div>`).join("");
     shell("分销中心", `<div class="dist-mini-hero">
         <div class="dist-mini-eyebrow">BRAND PARTNER · ${esc(profile()?.tierId || "standard").toUpperCase()}</div>
         <div class="dist-mini-name">${esc(state.user.name)}<span>合作推广员</span></div>
@@ -72,7 +67,7 @@
       </div>
       ${tabs()}
       <div class="dist-mini-kpis"><article><span>待确认</span><strong>${money(account.pending)}</strong></article><article><span>冻结中</span><strong>${money(account.frozen)}</strong></article><article><span>提现中</span><strong>${money(account.withdrawing)}</strong></article></div>
-      <section class="dist-mini-section"><div class="dist-mini-section-head"><h2>推广概览</h2><span>最多三级 · 首次绑定</span></div>
+      <section class="dist-mini-section"><div class="dist-mini-section-head"><h2>推广概览</h2><span>直接推荐 · 首次绑定</span></div>
         <div class="dist-mini-overview"><div><strong>${members.length}</strong><span>团队成员</span></div><div><strong>${tokens.length}</strong><span>有效分享码</span></div><div><strong>${myCommissions.length}</strong><span>佣金记录</span></div></div>
         <button class="dist-mini-wide" data-action="tab" data-value="share">生成商品分享码 <span>→</span></button>
       </section>
@@ -113,18 +108,14 @@
     state = read();
     if (!isPromoter()) return renderQualification();
     const members = teamMembers();
-    const levels = [1, 2, 3].map(level => {
-      const rows = members.filter(item => item.level === level);
-      const names = rows.map(row => {
-        const user = state.users.find(item => item.id === row.memberId);
-        const promoter = state.promoterProfiles.find(profileRow => profileRow.userId === row.memberId);
-        return `<div class="dist-team-row"><span class="dist-team-avatar">${esc((user?.name || row.memberId).slice(0, 1))}</span><div><strong>${esc(user?.name || row.memberId)}</strong><small>${esc(row.memberId)} · ${promoter?.status === "active" ? "合作推广员" : "商城用户"}</small></div><span>${esc(row.boundAt || "")}</span></div>`;
-      }).join("");
-      return `<section class="dist-mini-section"><div class="dist-mini-section-head"><h2>第 ${level} 级</h2><span>${rows.length} 人</span></div>${names || `<div class="dist-mini-empty">暂无第 ${level} 级团队成员</div>`}</section>`;
+    const names = members.map(row => {
+      const user = state.users.find(item => item.id === row.memberId);
+      const promoter = state.promoterProfiles.find(profileRow => profileRow.userId === row.memberId);
+      return `<div class="dist-team-row"><span class="dist-team-avatar">${esc((user?.name || row.memberId).slice(0, 1))}</span><div><strong>${esc(user?.name || row.memberId)}</strong><small>${esc(row.memberId)} · ${promoter?.status === "active" ? "合作推广员" : "商城用户"}</small></div><span>${esc(row.boundAt || "")}</span></div>`;
     }).join("");
     shell("我的团队", `${tabs()}
-      <div class="dist-team-summary"><strong>${members.length}</strong><span>有效团队成员</span><small>关系最多追溯三级；资格失效的推广员不继续产生佣金。</small></div>
-      ${levels}
+      <div class="dist-team-summary"><strong>${members.length}</strong><span>直接推荐用户</span><small>佣金仅按本人直接推荐关系计算；用户后续成为推广员不会产生上级佣金。</small></div>
+      <section class="dist-mini-section"><div class="dist-mini-section-head"><h2>我的直接推荐</h2><span>${members.length} 人</span></div>${names || `<div class="dist-mini-empty">暂无直接推荐用户</div>`}</section>
       <div class="dist-mini-callout">归属按首次有效绑定确定。推广关系更正仅由有权限的运营人员处理，需填写原因并记录前后关系及审计信息。</div>`);
   }
 
@@ -134,7 +125,8 @@
     const account = summary();
     const rows = commissions().map(item => {
       const order = state.orders.find(row => row.id === item.orderId);
-      return `<article class="dist-ledger-row"><div class="dist-ledger-icon">${Number(item.level || 1)}级</div><div class="dist-ledger-copy"><strong>${esc(item.orderId)}</strong><small>${esc(order?.items?.[0]?.name || "推广订单")} · 基数 ${money(item.basis || 0)} × ${Number(item.rate || 0)}%</small><small>规则 ${esc(item.ruleVersion || "legacy")} · ${esc(item.createdAt || "")}</small></div><div class="dist-ledger-value">${money(item.amount)}${tag(item.status)}</div></article>`;
+      const levelLabel = Number(item.level || 1) === 1 ? "直推" : `旧规 L${Number(item.level)}`;
+      return `<article class="dist-ledger-row"><div class="dist-ledger-icon">${levelLabel}</div><div class="dist-ledger-copy"><strong>${esc(item.orderId)}</strong><small>${esc(order?.items?.[0]?.name || "推广订单")} · 基数 ${money(item.basis || 0)} × ${Number(item.rate || 0)}%</small><small>规则 ${esc(item.ruleVersion || "legacy")} · ${esc(item.createdAt || "")}</small></div><div class="dist-ledger-value">${money(item.amount)}${tag(item.status)}</div></article>`;
     }).join("");
     const ledger = state.commissionLedger.filter(item => item.userId === state.user.id).slice(0, 10).map(entry =>
       `<div class="dist-ledger-event"><span>${esc(entry.note || entry.type)}<small>${esc(entry.createdAt)} · ${esc(entry.orderId || entry.withdrawalId || "")}</small></span><strong class="${entry.direction === "debit" ? "minus" : ""}">${entry.direction === "memo" ? "备忘" : entry.direction === "debit" ? "−" : "+"}${money(entry.amount)}</strong></div>`
@@ -143,7 +135,7 @@
       <div class="dist-account-strip"><div><span>可提现</span><strong>${money(account.available)}</strong></div><div><span>冻结中</span><strong>${money(account.frozen)}</strong></div><div><span>待确认</span><strong>${money(account.pending)}</strong></div></div>
       <section class="dist-mini-section"><div class="dist-mini-section-head"><h2>佣金订单快照</h2><span>${commissions().length} 笔</span></div>${rows || `<div class="dist-mini-empty">暂无佣金订单</div>`}</section>
       <section class="dist-mini-section"><div class="dist-mini-section-head"><h2>账本流水</h2><span>追加记录</span></div>${ledger || `<div class="dist-mini-empty">暂无资金流水</div>`}</section>
-      <div class="dist-mini-callout">佣金基数按订单商品实付净额扣除退款，不含运费；下单时固定推广层级、规则版本和费率。历史快照不会随新规则改写。</div>`);
+      <div class="dist-mini-callout">佣金按直接推荐关系计算，基数为订单商品实付净额扣除退款、不含运费；下单时固定推广关系、规则版本和费率。历史快照不会随新规则改写。</div>`);
   }
 
   function renderPayout() {
@@ -172,11 +164,11 @@
     const active = isPromoter();
     shell("推广员资格", `${tabs()}
       <section class="dist-qual-card"><div class="dist-qual-mark">M</div><h2>${active ? "你已成为合作推广员" : application?.status === "pending" ? "申请审核中" : application?.status === "rejected" ? "申请未通过" : "申请成为合作推广员"}</h2>
-        <p>${active ? `推广编号 ${esc(profile()?.referralCode || "")} · 等级 ${esc(profile()?.tierId || "standard")}` : application?.status === "pending" ? `已于 ${esc(application.createdAt)} 提交。审核结果将在此更新。` : application?.status === "rejected" ? `审核说明：${esc(application.reviewNote || "请查看后台审核意见")}` : "完成申请与审核后，系统将签发推广身份和分享码。推广关系最多三级，按首次有效绑定归因。"} </p>
+        <p>${active ? `推广编号 ${esc(profile()?.referralCode || "")} · 等级 ${esc(profile()?.tierId || "standard")}` : application?.status === "pending" ? `已于 ${esc(application.createdAt)} 提交。审核结果将在此更新。` : application?.status === "rejected" ? `审核说明：${esc(application.reviewNote || "请查看后台审核意见")}` : "完成申请与审核后，系统将签发推广身份和分享码。佣金仅计算本人直接推荐用户，归因按首次有效绑定确定。"} </p>
         ${active ? `<button class="primary-btn" data-action="tab" data-value="overview">进入推广中心</button>` : application?.status === "pending" ? `<span class="dist-pending-pill">待审核</span>` : `<button class="primary-btn" data-action="apply">提交推广申请</button>`}
       </section>
       <section class="dist-mini-section"><div class="dist-mini-section-head"><h2>合作规则摘要</h2><span>上线前待确认</span></div>
-        <div class="dist-rule-mini"><span>推广关系</span><strong>最多三级 · 首次绑定</strong></div>
+        <div class="dist-rule-mini"><span>推广关系</span><strong>直接推荐 · 首次绑定</strong></div>
         <div class="dist-rule-mini"><span>佣金核算</span><strong>订单商品实付净额 · 不含运费</strong></div>
         <div class="dist-rule-mini"><span>佣金结算</span><strong>确认收货后冻结，再释放可提现</strong></div>
         <div class="dist-rule-mini"><span>收款方式</span><strong>微信商户 / 人工银行转账</strong></div>

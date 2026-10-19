@@ -95,7 +95,7 @@
       <div class="dist-admin-note">当前页面是分销领域工作台。微信支付、退款、出款与账本在真实系统中分别由 payment / aftersales / distribution 模块协作；此处仅演示状态和操作审计，不连接真实渠道。</div>
       <div class="dist-admin-grid">
         ${panel("佣金账户分布", `<div class="panel-body"><div class="dist-admin-kpi"><div><span>待确认收货</span><strong>${money(totals.pending)}</strong></div><div><span>冻结中</span><strong>${money(totals.frozen)}</strong></div><div><span>可提现</span><strong>${money(totals.available)}</strong></div><div><span>提现锁定</span><strong>${money(totals.withdrawing)}</strong></div><div><span>累计已提现</span><strong>${money(totals.withdrawn)}</strong></div><div><span>待人工处置</span><strong>${money(totals.recoverable)}</strong></div></div><p class="inline-help" style="margin-top:12px">账户余额是追加式佣金账本的可重建投影，不是积分、储值或通用支付余额。</p></div>`, `规则版本 ${esc(currentRule?.id || "未发布")}`)}
-        ${panel("业务闭环", `<div class="panel-body"><div class="rule-list"><div class="rule-item"><span class="rule-bullet">1</span><span>审核推广员后签发来源码；服务端校验有效推广员，普通用户分享只做分析。</span></div><div class="rule-item"><span class="rule-bullet">2</span><span>首次有效绑定不可被覆盖；下单固定最多三级归因、订单项基数和规则版本。</span></div><div class="rule-item"><span class="rule-bullet">3</span><span>支付记待结算，确认收货后进入可配置冻结期；售后冲减佣金并留账。</span></div><div class="rule-item"><span class="rule-bullet">4</span><span>提现先锁佣金，再审核、出款、登记结果；失败释放，已提现后退款进入人工异常。</span></div></div></div>`, "身份 / 关系 / 资金")}
+        ${panel("业务闭环", `<div class="panel-body"><div class="rule-list"><div class="rule-item"><span class="rule-bullet">1</span><span>审核推广员后签发来源码；演示服务校验有效推广员，普通用户分享只做分析。</span></div><div class="rule-item"><span class="rule-bullet">2</span><span>首次有效绑定不可被覆盖；下单固定直接推荐归因、订单项基数和规则版本。</span></div><div class="rule-item"><span class="rule-bullet">3</span><span>支付记待结算，确认收货后进入可配置冻结期；售后冲减佣金并留账。</span></div><div class="rule-item"><span class="rule-bullet">4</span><span>提现先锁佣金，再审核、出款、登记结果；失败释放，已提现后退款进入人工异常。</span></div></div></div>`, "身份 / 关系 / 资金")}
       </div>
       <div class="compare-layout">
         ${panel("待处理任务", `<div class="panel-body"><div class="list-link"><a href="admin-distribution.html?tab=applications">推广员申请</a><strong>${applications.length} 项</strong></div><div class="list-link"><a href="admin-distribution.html?tab=payouts">提现审核 / 出款</a><strong>${openPayouts.length} 项</strong></div><div class="list-link"><a href="admin-distribution.html?tab=risk">风险复核</a><strong>${risk.length} 项</strong></div><div class="list-link"><a href="admin-distribution.html?tab=ledger">退款佣金异常</a><strong>${state.commissions.filter(item => item.status === "recoverable").length} 项</strong></div></div>`, "队列状态")}
@@ -149,14 +149,11 @@
     const rows = state.referralRelations.filter(item => item.status === "active").map(item => {
       const parent = user(item.promoterId);
       const child = user(item.memberId);
-      const ancestor = state.referralRelations.find(row => row.memberId === item.promoterId && row.status === "active");
-      const great = ancestor && state.referralRelations.find(row => row.memberId === ancestor.promoterId && row.status === "active");
-      const level = great ? 3 : ancestor ? 2 : 1;
-      return `<tr><td><strong>${esc(child?.name || item.memberId)}</strong><small>${esc(item.memberId)}</small></td><td><strong>${esc(parent?.name || item.promoterId)}</strong><small>${esc(item.promoterId)}</small></td><td>${level} 级链路</td><td>${esc(item.bindType === "admin_correction" ? "后台纠正" : item.channel || "首次分享绑定")}<small>${esc(item.sourceTokenId || item.correctedFrom || "—")}</small></td><td>${esc(item.boundAt || "—")}<small>状态 ${esc(statusNames[item.status] || item.status)}</small></td><td class="nowrap"><button class="text-action" data-action="correct-relation" data-id="${esc(item.memberId)}">纠正关系</button><button class="text-action" data-action="relation-chain" data-id="${esc(item.memberId)}">查看链路</button></td></tr>`;
+      return `<tr><td><strong>${esc(child?.name || item.memberId)}</strong><small>${esc(item.memberId)}</small></td><td><strong>${esc(parent?.name || item.promoterId)}</strong><small>${esc(item.promoterId)}</small></td><td>直接推荐</td><td>${esc(item.bindType === "admin_correction" ? "后台纠正" : item.channel || "首次分享绑定")}<small>${esc(item.sourceTokenId || item.correctedFrom || "—")}</small></td><td>${esc(item.boundAt || "—")}<small>状态 ${esc(statusNames[item.status] || item.status)}</small></td><td class="nowrap"><button class="text-action" data-action="correct-relation" data-id="${esc(item.memberId)}">纠正关系</button><button class="text-action" data-action="relation-chain" data-id="${esc(item.memberId)}">查看链路</button></td></tr>`;
     }).join("");
     const body = `<div class="dist-admin-note">归属规则：推广员分享码经服务端校验后，仅为尚未绑定的用户建立首次关系。后续分享不得覆盖；后台纠正需独立权限、理由、环路校验和前后值审计。</div>
       ${panel("有效推广关系", table(["被推广用户", "直接推广员", "层级", "绑定来源", "绑定时间", "操作"], rows), `${state.referralRelations.filter(item => item.status === "active").length} 条有效关系`)}`;
-    page("推广关系", "维护最多三级推广链，追踪首次绑定来源，并受控处理关系纠正。", body);
+    page("推广关系", "维护直接推荐关系，追踪首次绑定来源，并受控处理关系纠正。", body);
   }
 
   function renderRules() {
@@ -165,8 +162,9 @@
     const tiers = ["standard", "silver", "gold"];
     const tierNames = Object.fromEntries(state.distributionTiers.map(item => [item.id, item.name]));
     const matrixRows = tiers.map(tierId => {
-      const rates = current.tiers?.[tierId] || [0, 0, 0];
-      return `<tr><td><strong>${esc(tierNames[tierId] || tierId)}</strong></td>${[0, 1, 2].map(index => `<td>${Number(rates[index] || 0)}%</td>`).join("")}<td>${Number(rates.reduce((sum, value) => sum + Number(value || 0), 0))}%</td></tr>`;
+      const rates = current.tiers?.[tierId] || [0];
+      const directRate = Number(Array.isArray(rates) ? rates[0] || 0 : rates || 0);
+      return `<tr><td><strong>${esc(tierNames[tierId] || tierId)}</strong></td><td>${directRate}%</td></tr>`;
     }).join("");
     const versions = state.commissionRuleVersions.map(rule => `<tr><td><strong>${esc(rule.name)}</strong><small>${esc(rule.id)}</small></td><td>${esc(rule.effectiveAt || "—")}</td><td>${esc(rule.scope || "全场商品")}</td><td>${status(rule.status)}</td><td>${esc(rule.note || "—")}</td><td><button class="text-action" data-action="rule-detail" data-id="${esc(rule.id)}">快照</button></td></tr>`).join("");
     const tiersRows = [...state.distributionTiers].sort((a, b) => Number(a.sort) - Number(b.sort)).map(tier => {
@@ -174,14 +172,14 @@
       return `<tr><td><strong>${esc(tier.name)}</strong><small>${esc(tier.id)}</small></td><td>${esc(conditions || "无升级条件")}</td><td>${esc(tier.combination || "AND")}</td><td>${esc(tier.period || "近90日")}</td><td>${status(tier.status)}</td></tr>`;
     }).join("");
     const actions = `<button class="admin-btn" data-action="tier-evaluate">立即评估等级</button><button class="admin-btn" data-action="edit-tier-rules">编辑等级规则</button><button class="admin-btn primary" data-action="edit-commission-rules">发布新佣金版本</button>`;
-    const body = `<div class="dist-admin-note">佣金比例按“推广员等级 × 推广层级”配置；订单以商品实付净额（扣退款、不含运费）固化基数、比例和规则版本。以下演示参数不是已确认的商业政策。</div>
+    const body = `<div class="dist-admin-note">佣金仅按直接推荐关系计算，比例按推广员等级配置；订单以商品实付净额（扣退款、不含运费）固化基数、比例和规则版本。以下演示参数不是已确认的商业政策。</div>
       <div class="dist-admin-grid">
-        ${panel("当前佣金比例矩阵", table(["推广员等级", "一级", "二级", "三级", "合计"], matrixRows), `${esc(current.id || "未发布")} · ${esc(current.effectiveAt || "")}`)}
-        ${panel("结算与提现参数", `<div class="panel-body"><div class="dist-admin-kpi"><div><span>最大关系层级</span><strong>${state.distributionSettings.maxLevels} 级</strong></div><div><span>收货冻结期</span><strong>${state.distributionSettings.freezeDays} 天</strong></div><div><span>最低提现</span><strong>${money(state.distributionSettings.minimumPayout)}</strong></div><div><span>单笔上限</span><strong>${money(state.distributionSettings.singlePayoutLimit)}</strong></div><div><span>日累计上限</span><strong>${money(state.distributionSettings.dailyPayoutLimit)}</strong></div><div><span>小额自动审核</span><strong>${money(state.distributionSettings.autoReviewThreshold)}</strong></div></div><div style="margin-top:12px"><button class="admin-btn" data-action="edit-distribution-settings">调整演示参数</button></div></div>`, "均待运营 / 财务确认")}
+        ${panel("当前直推佣金比例", table(["推广员等级", "直接推荐"], matrixRows), `${esc(current.id || "未发布")} · ${esc(current.effectiveAt || "")}`)}
+        ${panel("结算与提现参数", `<div class="panel-body"><div class="dist-admin-kpi"><div><span>佣金推荐层级</span><strong>直接推荐</strong></div><div><span>收货冻结期</span><strong>${state.distributionSettings.freezeDays} 天</strong></div><div><span>最低提现</span><strong>${money(state.distributionSettings.minimumPayout)}</strong></div><div><span>单笔上限</span><strong>${money(state.distributionSettings.singlePayoutLimit)}</strong></div><div><span>日累计上限</span><strong>${money(state.distributionSettings.dailyPayoutLimit)}</strong></div><div><span>小额自动审核</span><strong>${money(state.distributionSettings.autoReviewThreshold)}</strong></div></div><div style="margin-top:12px"><button class="admin-btn" data-action="edit-distribution-settings">调整演示参数</button></div></div>`, "均待运营 / 财务确认")}
       </div>
       <div style="margin-top:14px">${panel("等级评估规则", table(["等级", "命中条件", "组合关系", "统计周期", "状态"], tiersRows), `当前版本 ${esc(state.tierRuleVersion || "未发布")} · 周期任务保存输入指标、规则版本、结果与原因`)}</div>
       <div style="margin-top:14px">${panel("佣金规则版本", table(["规则名称 / 版本", "生效时间", "适用范围", "状态", "备注", "操作"], versions), "版本发布不修改历史订单")}</div>`;
-    page("等级与佣金规则", "配置分销等级评估与按等级/层级的版本化佣金政策。", body, actions);
+    page("等级与佣金规则", "配置推广员等级评估与按等级区分的直推佣金政策。", body, actions);
   }
 
   function renderLedger() {
@@ -323,15 +321,16 @@
     const ids = ["standard", "silver", "gold"];
     const labels = Object.fromEntries(state.distributionTiers.map(item => [item.id, item.name]));
     const rows = ids.map(id => {
-      const values = active.tiers?.[id] || [5, 2, 1];
-      return `<div class="dist-admin-inline" style="margin:10px 0"><strong style="width:94px;font-size:10px">${esc(labels[id] || id)}</strong>${values.map((value, index) => `<label class="field">第 ${index + 1} 级 %<input name="${id}_${index}" type="number" min="0" max="50" step="0.1" value="${Number(value)}" required></label>`).join("")}</div>`;
+      const configured = active.tiers?.[id] || [5];
+      const value = Number(Array.isArray(configured) ? configured[0] || 0 : configured || 0);
+      return `<div class="dist-admin-inline" style="margin:10px 0"><strong style="width:94px;font-size:10px">${esc(labels[id] || id)}</strong><label class="field">直推佣金 %<input name="${id}_rate" type="number" min="0" max="50" step="0.1" value="${value}" required></label></div>`;
     }).join("");
     const backdrop = openModal("发布佣金规则版本", `<form id="commission-rule-form"><div class="form-grid"><label class="field" style="grid-column:1/-1">规则名称<input name="name" required value="分销政策 ${new Date().toISOString().slice(0, 10)}"></label><label class="field">生效时间<input name="effectiveAt" type="datetime-local" required value="${new Date(Date.now() + 60000).toISOString().slice(0, 16)}"></label><label class="field">适用范围<input value="全场商品" disabled><input type="hidden" name="scope" value="全场商品"></label></div>${rows}<label class="field">规则备注<textarea name="note" rows="2" placeholder="佣金基数默认商品实付净额，不含运费"></textarea></label></form><p class="inline-help" style="margin-top:10px">新版本只影响生效时间之后创建的订单；历史订单佣金快照不可回算。</p>`, `<button class="secondary-btn" data-modal-close>取消</button><button class="primary-btn small" data-action="save-commission-rule">发布版本</button>`);
     backdrop.querySelector("[data-action='save-commission-rule']").addEventListener("click", () => {
       const form = backdrop.querySelector("#commission-rule-form");
       if (!form.reportValidity()) return;
       const values = new FormData(form);
-      const tiers = Object.fromEntries(ids.map(id => [id, [0, 1, 2].map(index => Number(values.get(`${id}_${index}`)))]));
+      const tiers = Object.fromEntries(ids.map(id => [id, [Number(values.get(`${id}_rate`))]]));
       try {
         window.MallOps.saveCommissionRule({ name: values.get("name"), effectiveAt: values.get("effectiveAt"), note: values.get("note"), tiers, scope: values.get("scope") });
         closeModal();
@@ -382,7 +381,7 @@
   function distributionSettingsForm() {
     const settings = state.distributionSettings;
     const backdrop = openModal("分销结算参数", `<form id="distribution-settings-form"><div class="form-grid">
-      <label class="field">最大推广层级<input value="3" disabled></label><label class="field">收货后冻结天数<input name="freezeDays" type="number" min="0" max="90" value="${Number(settings.freezeDays)}" required></label>
+      <label class="field">佣金归因层级<input value="直接推荐" disabled></label><label class="field">收货后冻结天数<input name="freezeDays" type="number" min="0" max="90" value="${Number(settings.freezeDays)}" required></label>
       <label class="field">最低提现金额<input name="minimumPayout" type="number" min="1" step="0.01" value="${Number(settings.minimumPayout)}" required></label><label class="field">单笔提现上限<input name="singlePayoutLimit" type="number" min="1" value="${Number(settings.singlePayoutLimit)}" required></label>
       <label class="field">日累计限额<input name="dailyPayoutLimit" type="number" min="1" value="${Number(settings.dailyPayoutLimit)}" required></label><label class="field">自动审核上限<input name="autoReviewThreshold" type="number" min="0" value="${Number(settings.autoReviewThreshold)}" required></label>
     </div></form><p class="dist-admin-note" style="margin-top:12px">当前为演示配置。上线前需运营、财务、法务确认并核验微信商户出款能力、实名要求和银行付款凭证流程。</p>`, `<button class="secondary-btn" data-modal-close>取消</button><button class="primary-btn small" data-action="save-distribution-settings">保存演示配置</button>`);

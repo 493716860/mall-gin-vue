@@ -12,9 +12,18 @@
     "pending-review": "待评价",
     cancelled: "已取消",
     refunded: "已退款",
-    recoverable: "退款待追回"
+    recoverable: "退款待追回",
+    pending: "等待商家审核",
+    approved_wait_return: "待寄回商品",
+    return_in_transit: "退货运输中",
+    return_received: "退货已签收",
+    refund_processing: "退款处理中",
+    inspection_failed: "验收未通过",
+    rejected: "售后申请未通过"
   };
   let state = read();
+  window.MallOps.refreshMembershipBenefits();
+  state = read();
   let filter = new URLSearchParams(location.search).get("status") || "all";
 
   function shell(title, content) {
@@ -26,12 +35,21 @@
   }
 
   function orderStatus(order) {
-    if (order.afterSaleId) {
-      const ticket = state.afterSales.find(item => item.id === order.afterSaleId);
-      if (ticket?.status === "pending") return "售后审核中";
-      if (ticket?.status === "rejected") return statusNames[order.status] || "售后已拒绝";
-    }
+    const activeTicket = state.afterSales.find(item => item.orderId === order.id
+      && ["pending", "approved_wait_return", "return_in_transit", "return_received", "refund_processing"].includes(item.status));
+    if (activeTicket) return `售后 · ${statusNames[activeTicket.status] || "处理中"}`;
     return statusNames[order.status] || order.status;
+  }
+
+  function ticketLabel(ticket) {
+    return statusNames[ticket.status] || "处理中";
+  }
+
+  function ticketReservedQty(orderId, itemIndex) {
+    return state.afterSales.filter(ticket => ticket.orderId === orderId
+      && ["pending", "approved_wait_return", "return_in_transit", "return_received", "refund_processing", "refunded"].includes(ticket.status))
+      .reduce((sum, ticket) => sum + (ticket.items || []).filter(line => Number(line.orderItemIndex) === itemIndex)
+        .reduce((qty, line) => qty + Number(line.qty || 0), 0), 0);
   }
 
   function compressReviewImage(file) {
@@ -76,7 +94,7 @@
     shell("我的订单", `${pendingReviewCount ? `<a class="review-pending-banner" href="mini-orders.html?status=pending-review"><span class="review-pending-icon">${icon("chat")}</span><span class="review-pending-copy"><strong>还有 ${pendingReviewCount} 件商品待评价</strong><small>分享真实体验，帮助其他用户做选择</small></span><span class="review-pending-cta">立即评价 ${icon("chevron")}</span></a>` : ""}
       <div class="toolbar-row">${filters.map(([value, label]) => `<button class="filter-chip ${filter === value ? "active" : ""}" data-action="filter" data-value="${value}">${label}</button>`).join("")}</div>
       ${orders.length ? orders.map(order => {
-        const ticket = state.afterSales.find(item => item.id === order.afterSaleId);
+        const tickets = state.afterSales.filter(item => item.orderId === order.id);
         const items = order.items.map((item, itemIndex) => `<div class="order-item"><div class="cart-row" style="grid-template-columns:58px 1fr;padding:10px 0">
           <div class="cart-thumb" style="width:58px;height:58px"><img src="${item.image}" alt="${esc(item.name)}"></div>
           <div class="cart-info"><div class="cart-name">${esc(item.name)}</div><div class="cart-spec">${esc(item.skuLabel || item.skuSpecs?.map(spec => spec.value).join(" / ") || "")}</div><div class="cart-bottom"><span class="cart-spec">× ${item.qty}</span><strong class="price" style="font-size:12px">${money(item.price)}</strong></div></div>
@@ -92,7 +110,7 @@
         return `<article class="white-card section" style="padding:12px">
           <div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;color:#999"><span>订单号 ${esc(order.id)}</span><strong style="color:var(--orange)">${orderStatus(order)}</strong></div>
           <div style="margin-top:6px">${items}</div>
-          ${ticket ? `<div style="margin-top:8px;padding:8px;background:#fafafa;color:#777;font-size:10px">售后：${esc(ticket.reason)} · ${ticket.status === "pending" ? "等待商家审核" : ticket.status === "refunded" ? "退款已处理" : ticket.status === "rejected" ? "申请未通过" : "处理中"}</div>` : ""}
+          ${tickets.length ? `<div style="margin-top:8px;padding:8px;background:#fafafa;color:#777;font-size:10px">${tickets.map(ticket => `<div style="padding:4px 0;border-bottom:1px solid #eee">售后 ${esc(ticket.id)}：${esc(ticket.reason)} · ${ticketLabel(ticket)} · 退款 ${money(ticket.amount)}${ticket.returnShipment?.trackingNo ? `<div>${esc(ticket.returnShipment.carrier)} ${esc(ticket.returnShipment.trackingNo)}</div>` : ""}${ticket.status === "approved_wait_return" ? `<button class="secondary-btn" style="margin-top:5px" data-action="return-shipment" data-id="${esc(ticket.id)}">填写退货物流</button>` : ""}</div>`).join("")}</div>` : ""}
           ${order.tracking?.length ? `<div style="margin-top:7px;border-top:1px solid #f1f1f1;padding-top:6px">${tracking}</div>` : ""}
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:9px;border-top:1px solid #f1f1f1"><span class="cart-spec">${esc(order.createdAt || "")}</span><strong style="font-size:12px">实付 ${money(order.total)}</strong></div>
           ${actions ? `<div style="display:flex;justify-content:flex-end;gap:7px;margin-top:10px">${actions}</div>` : ""}
@@ -136,8 +154,14 @@
     const coupons = state.claimedCoupons.map(claim => {
       const coupon = state.coupons.find(item => item.id === (claim.couponId || claim.id));
       if (!coupon) return "";
-      const status = { available: "可使用", used: "已使用", expired: "已过期" }[claim.status] || claim.status;
-      return `<article class="white-card section" style="display:flex;align-items:center;justify-content:space-between;padding:14px"><div><strong style="color:var(--orange);font-size:15px">${esc(coupon.name)}</strong><div class="cart-spec" style="margin-top:5px">${claim.receivedAt || "已领取"} · 有效期 ${coupon.validDays} 天</div></div><span class="tag ${claim.status === "available" ? "top" : ""}">${status}</span></article>`;
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const expired = claim.expiresAt && today > claim.expiresAt;
+      const status = expired ? "已过期" : ({ available: "可使用", used: "已使用", expired: "已过期" }[claim.status] || claim.status);
+      const validity = claim.expiresAt
+        ? `${claim.validFrom || claim.receivedAt || "已领取"} 至 ${claim.expiresAt}`
+        : `领取后 ${coupon.validDays} 天`;
+      return `<article class="white-card section" style="display:flex;align-items:center;justify-content:space-between;padding:14px"><div><strong style="color:var(--orange);font-size:15px">${esc(coupon.name)}${claim.source === "birthday" ? " · 生日礼券" : ""}</strong><div class="cart-spec" style="margin-top:5px">${claim.receivedAt || "已领取"} · 有效期 ${esc(validity)}</div></div><span class="tag ${claim.status === "available" && !expired ? "top" : ""}">${status}</span></article>`;
     }).join("");
     shell("我的优惠券", `<a class="head-link" href="mini-promotions.html">去领券 ${icon("chevron")}</a>${coupons || `<div class="empty-state"><strong>还没有优惠券</strong><p>去营销中心领取优惠</p><a class="primary-btn small" href="mini-promotions.html">去领券</a></div>`}`);
   }
@@ -257,18 +281,75 @@
         openModal("物流详情", `<div class="cart-spec">${esc(order?.carrier || "待揽收")} · ${esc(order?.trackingNo || "暂无单号")}</div>${lines || `<div class="cart-spec" style="margin-top:12px">暂无物流节点</div>`}`);
       } else if (action === "after-sale") {
         const order = window.MallOps.findOrder(read(), id);
+        if (!order) throw new Error("订单不存在");
+        const gross = order.items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0), 0);
+        const goodsNet = Math.max(0, Number(order.subtotal || 0) - Number(order.discount || 0));
+        const selectable = order.items.map((item, index) => {
+          const remaining = Math.max(0, Number(item.qty || 0) - ticketReservedQty(id, index));
+          return { item, index, remaining, linePaid: gross ? goodsNet * Number(item.price || 0) * Number(item.qty || 0) / gross : 0 };
+        }).filter(row => row.remaining > 0);
+        if (!selectable.length) throw new Error("订单商品已全部申请售后");
+        const isReturn = order.status !== "to_ship";
+        const reasonOptions = ["商品与描述不符", "商品质量问题", "少件/漏发", "错发商品", "不想要了", "其他问题"];
+        const itemRows = selectable.map(({ item, index, remaining, linePaid }) => `<label style="display:grid;grid-template-columns:20px 1fr 72px;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #eee;font-size:11px">
+          <input type="checkbox" name="include" value="${index}" checked>
+          <span><strong>${esc(item.name)}</strong><small style="display:block;color:#999;margin-top:3px">${esc(item.skuLabel || "")} · 可申请 ${remaining} 件 · 预估 ${money(linePaid)}</small></span>
+          <input class="field" style="width:72px;padding:6px" type="number" name="qty-${index}" data-qty-index="${index}" min="1" max="${remaining}" value="1" aria-label="申请数量">
+        </label>`).join("");
         const backdrop = openModal("申请售后", `<form id="after-sale-form"><div class="form-grid">
-          <label class="field" style="grid-column:1/-1">售后原因<select name="reason"><option>商品与描述不符</option><option>商品质量问题</option><option>不想要了</option><option>少件/漏发</option><option>其他问题</option></select></label>
+          <div style="grid-column:1/-1"><strong style="font-size:12px">选择售后商品</strong>${itemRows}</div>
+          <label class="field" style="grid-column:1/-1">售后原因<select name="reason">${reasonOptions.map(reason => `<option>${reason}</option>`).join("")}</select></label>
           <label class="field" style="grid-column:1/-1">问题描述<textarea name="description" rows="3" placeholder="请描述遇到的问题"></textarea></label>
-          <label class="field">申请退款金额<input name="amount" type="number" min="0.01" max="${Number(order?.total || 0)}" step="0.01" value="${Number(order?.total || 0)}"></label>
+          <div id="after-sale-estimate" class="mini-notice" style="grid-column:1/-1">预计退款：${money(0)}（以订单优惠分摊和售后审核为准）</div>
+          <div class="mini-notice" style="grid-column:1/-1">${isReturn ? "此订单已发货，审核通过后需填写退货物流，商家验收后才会模拟完成退款。" : "商品发货前可申请仅退款。"}</div>
         </div><input type="hidden" name="orderId" value="${esc(id)}"></form>`, `<button class="secondary-btn" data-modal-close>取消</button><button class="primary-btn small" data-action="submit-after-sale">提交申请</button>`);
+        const formElement = backdrop.querySelector("#after-sale-form");
+        const updateEstimate = () => {
+          const selected = new Set(Array.from(formElement.querySelectorAll("input[name='include']:checked")).map(input => Number(input.value)));
+          const selectedGoods = selectable.reduce((sum, row) => {
+            if (!selected.has(row.index)) return sum;
+            const qty = Math.min(row.remaining, Math.max(1, Number(formElement.querySelector(`[data-qty-index='${row.index}']`)?.value || 1)));
+            return sum + row.linePaid * qty / Math.max(1, Number(row.item.qty || 1));
+          }, 0);
+          const allCovered = order.items.every((item, index) => {
+            const row = selectable.find(entry => entry.index === index);
+            const selectedQty = row && selected.has(index) ? Math.min(row.remaining, Number(formElement.querySelector(`[data-qty-index='${index}']`)?.value || 0)) : 0;
+            return ticketReservedQty(id, index) + selectedQty >= Number(item.qty || 0);
+          });
+          const merchantFault = ["商品与描述不符", "商品质量问题", "少件/漏发", "错发商品"].includes(formElement.querySelector("[name='reason']").value);
+          const shipRefund = isReturn && allCovered && merchantFault && !Number(order.refundedShippingAmount || 0) ? Number(order.shippingFee || 0) : 0;
+          backdrop.querySelector("#after-sale-estimate").textContent = `预计退款：${money(selectedGoods + shipRefund)}（含商品 ${money(selectedGoods)}${shipRefund ? ` + 运费 ${money(shipRefund)}` : ""}；以售后审核为准）`;
+        };
+        formElement.addEventListener("input", updateEstimate);
+        formElement.addEventListener("change", updateEstimate);
+        updateEstimate();
         backdrop.querySelector("[data-action='submit-after-sale']").addEventListener("click", () => {
-          const formElement = backdrop.querySelector("#after-sale-form");
           if (!formElement.reportValidity()) return;
           const form = new FormData(formElement);
-          window.MallOps.applyAfterSale({ orderId: form.get("orderId"), reason: form.get("reason"), description: form.get("description"), amount: Number(form.get("amount")) });
+          const items = form.getAll("include").map(value => ({
+            orderItemIndex: Number(value),
+            qty: Number(form.get(`qty-${value}`))
+          }));
+          window.MallOps.applyAfterSale({
+            orderId: form.get("orderId"),
+            type: isReturn ? "return_refund" : "refund",
+            reason: form.get("reason"),
+            description: form.get("description"),
+            items
+          });
           closeModal();
           toast("售后申请已提交，等待后台审核");
+          renderOrders();
+        });
+      } else if (action === "return-shipment") {
+        const backdrop = openModal("填写退货物流", `<form id="return-shipment-form"><label class="field">承运商<input name="carrier" required placeholder="如：顺丰速运"></label><label class="field" style="margin-top:10px">物流单号<input name="trackingNo" required placeholder="请输入退货物流单号"></label></form>`, `<button class="secondary-btn" data-modal-close>取消</button><button class="primary-btn small" data-action="submit-return-shipment">提交物流</button>`);
+        backdrop.querySelector("[data-action='submit-return-shipment']").addEventListener("click", () => {
+          const formElement = backdrop.querySelector("#return-shipment-form");
+          if (!formElement.reportValidity()) return;
+          const form = new FormData(formElement);
+          window.MallOps.submitReturnShipment(id, { carrier: form.get("carrier"), trackingNo: form.get("trackingNo") });
+          closeModal();
+          toast("退货物流已提交");
           renderOrders();
         });
       } else if (action === "claim") {

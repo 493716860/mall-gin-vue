@@ -22,6 +22,19 @@
     return [...state.tiers].sort((a, b) => a.points - b.points).filter(tier => points >= tier.points).at(-1) || state.tiers[0];
   }
 
+  function memberPriceForSku(sku, tierId) {
+    const configured = sku?.memberPrices?.[tierId];
+    if (configured === undefined || configured === null || configured === "") return null;
+    const price = Number(configured);
+    return Number.isFinite(price) && price > 0 && price <= Number(sku.price) ? cents(price) : null;
+  }
+
+  function claimIsInDate(claim) {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    return (!claim.validFrom || today >= claim.validFrom) && (!claim.expiresAt || today <= claim.expiresAt);
+  }
+
   function syncUserTier(state) {
     const user = state.users.find(item => item.id === state.user.id);
     if (user) user.tier = currentTier(state)?.name || user.tier;
@@ -44,7 +57,7 @@
     state.tierEvaluations ||= [];
     state.distributionAudit ||= [];
     state.distributionSettings ||= {
-      maxLevels: 3,
+      maxLevels: 1,
       freezeDays: 7,
       minimumPayout: Number(state.settings?.minimumWithdrawal || 100),
       singlePayoutLimit: 5000,
@@ -53,6 +66,7 @@
       highRiskManualReview: true,
       payoutChannels: ["wechat_merchant", "bank_transfer"]
     };
+    state.distributionSettings.maxLevels = 1;
     state.commissions ||= [];
     state.withdrawals ||= [];
     if (!Number.isFinite(Number(state.ledgerSequence))) {
@@ -114,18 +128,9 @@
 
   function resolveReferralChain(state, memberId) {
     ensureDistribution(state);
-    const chain = [];
-    const seen = new Set([memberId]);
-    let currentMemberId = memberId;
-    const maxLevels = Math.min(3, Number(state.distributionSettings.maxLevels || 3));
-    for (let level = 1; level <= maxLevels; level += 1) {
-      const relation = state.referralRelations.find(item => item.memberId === currentMemberId && item.status === "active");
-      if (!relation || seen.has(relation.promoterId) || !activePromoter(state, relation.promoterId)) break;
-      seen.add(relation.promoterId);
-      chain.push({ promoterId: relation.promoterId, relationId: relation.id, level });
-      currentMemberId = relation.promoterId;
-    }
-    return chain;
+    const relation = state.referralRelations.find(item => item.memberId === memberId && item.status === "active");
+    if (!relation || relation.promoterId === memberId || !activePromoter(state, relation.promoterId)) return [];
+    return [{ promoterId: relation.promoterId, relationId: relation.id, level: 1 }];
   }
 
   function activeCommissionRule(state, at = Date.now()) {
@@ -175,22 +180,10 @@
     const rule = activeCommissionRule(state);
     const sourceRelation = attribution?.relation || state.referralRelations.find(item => item.memberId === memberId && item.status === "active");
     const shareTokenId = sourceRelation?.sourceTokenId || (attribution?.firstBind ? attribution.token?.id : "") || "";
-    if (!chain.length && attribution?.relation) {
-      chain.push({ promoterId: attribution.relation.promoterId, relationId: attribution.relation.id, level: 1 });
-      let currentMemberId = attribution.relation.promoterId;
-      const seen = new Set([memberId, currentMemberId]);
-      for (let level = 2; level <= Math.min(3, Number(state.distributionSettings.maxLevels || 3)); level += 1) {
-        const parent = state.referralRelations.find(item => item.memberId === currentMemberId && item.status === "active");
-        if (!parent || seen.has(parent.promoterId) || !activePromoter(state, parent.promoterId)) break;
-        chain.push({ promoterId: parent.promoterId, relationId: parent.id, level });
-        seen.add(parent.promoterId);
-        currentMemberId = parent.promoterId;
-      }
-    }
     return chain.map(({ promoterId, relationId, level }) => {
       const profile = state.promoterProfiles.find(item => item.userId === promoterId);
-      const rates = rule?.tiers?.[profile?.tierId || "standard"] || rule?.tiers?.standard || [Number(state.settings?.commissionRate || 5), 0, 0];
-      const rate = Number(rates[level - 1] || 0);
+      const rates = rule?.tiers?.[profile?.tierId || "standard"] || rule?.tiers?.standard || [Number(state.settings?.commissionRate || 5)];
+      const rate = Number(Array.isArray(rates) ? rates[0] : rates || 0);
       return {
         promoterId,
         relationId,
@@ -257,6 +250,7 @@
     }
     if (promoType && !["flash", "group", "campaign"].includes(promoType)) throw new Error("不支持的营销活动");
     if (promoType && (lines || []).length !== 1) throw new Error("活动商品请单独下单");
+    const tier = currentTier(state);
     const items = (lines || []).map(line => {
       const product = state.products.find(item => item.id === line.productId);
       if (!product || product.status !== "on") throw new Error("所选商品暂不可购买");
@@ -267,6 +261,7 @@
       if (!Number.isFinite(requestedQty) || requestedQty <= 0) throw new Error("商品数量无效");
       const qty = Math.max(1, Math.floor(requestedQty));
       if (Number(sku.stock) < qty) throw new Error(`${product.name}（${sku.label}）库存不足`);
+      const memberPrice = promo ? null : memberPriceForSku(sku, tier?.id);
       return {
         productId: product.id,
         spuId: product.spuId || product.id,
@@ -275,7 +270,10 @@
         skuSpecs: (sku.specs || []).map(spec => ({ ...spec })),
         name: product.name,
         image: sku.image || product.gallery?.[0] || product.image,
-        price: cents(promo ? (promoType === "flash" ? promo.price : promo.groupPrice) : sku.price),
+        listPrice: Number(sku.price),
+        price: cents(promo ? (promoType === "flash" ? promo.price : promo.groupPrice) : memberPrice ?? sku.price),
+        memberPriceApplied: memberPrice !== null,
+        memberTierId: memberPrice !== null ? tier?.id || "" : "",
         qty,
         shippingTemplateId: product.shippingTemplateId || state.shippingTemplates?.[0]?.id || "",
         promoType
@@ -294,13 +292,14 @@
     });
 
     const subtotal = cents(items.reduce((sum, item) => sum + item.price * item.qty, 0));
-    const tier = currentTier(state);
     const memberRate = Number(tier?.discount || 100) / 100;
-    const memberDiscount = cents(subtotal * (1 - memberRate));
+    const memberDiscount = cents(items.reduce((sum, item) =>
+      sum + (item.memberPriceApplied ? 0 : item.price * item.qty * (1 - memberRate)), 0));
     let couponDiscount = 0;
     let couponClaimId = "";
     if (couponId) {
-      const claim = state.claimedCoupons.find(item => item.claimId === couponId || item.id === couponId);
+      const claim = state.claimedCoupons.find(item =>
+        (item.claimId === couponId || item.id === couponId) && claimIsInDate(item));
       const coupon = state.coupons.find(item => item.id === (claim?.couponId || claim?.id));
       if (!claim || claim.status !== "available" || !coupon || subtotal < Number(coupon.threshold || 0)) {
         throw new Error("该优惠券不可用或未达到使用门槛");
@@ -310,7 +309,7 @@
         throw new Error("优惠券规则配置无效");
       }
       couponDiscount = coupon.type === "rate"
-        ? cents(subtotal * memberRate * (1 - couponValue / 100))
+        ? cents(Math.max(0, subtotal - memberDiscount) * (1 - couponValue / 100))
         : cents(couponValue);
       couponClaimId = claim.claimId || claim.id;
     }
@@ -340,6 +339,8 @@
       address: orderAddress,
       userId: state.user.id,
       items,
+      memberTierId: tier?.id || "",
+      pointsMultiplier: Number(tier?.pointsMultiplier || 1),
       subtotal,
       memberDiscount,
       couponDiscount,
@@ -487,6 +488,9 @@
     const state = read();
     const order = findOrder(state, orderId);
     if (!order || order.status !== "to_ship") throw new Error("订单当前状态不可发货");
+    if (state.afterSales.some(ticket => ticket.orderId === orderId && AFTER_SALE_OPEN.includes(ticket.status))) {
+      throw new Error("订单有处理中售后，暂不可发货");
+    }
     if (!carrier || !trackingNo?.trim()) throw new Error("请填写承运商和物流单号");
     order.status = "to_receive";
     order.carrier = carrier;
@@ -506,8 +510,11 @@
     if (!order || order.status !== "to_receive") throw new Error("只有运输中的订单可以确认收货");
     order.status = "completed";
     order.receivedAt = nowText();
-    const pointsAwarded = Math.floor(Number(order.total));
+    const goodsPaid = Math.max(0, Number(order.subtotal || 0) - Number(order.discount || 0));
+    const pointsMultiplier = Number(order.pointsMultiplier || currentTier(state)?.pointsMultiplier || 1);
+    const pointsAwarded = Math.floor(goodsPaid * pointsMultiplier);
     order.pointsAwarded = pointsAwarded;
+    order.pointsMultiplier = pointsMultiplier;
     state.user.points = Number(state.user.points || state.points || 0) + pointsAwarded;
     state.points = state.user.points;
     const buyer = state.users.find(item => item.id === order.userId);
@@ -601,29 +608,126 @@
     return review;
   }
 
-  function applyAfterSale({ orderId, type = "refund", reason, description = "", amount }) {
+  const AFTER_SALE_OPEN = ["pending", "approved_wait_return", "return_in_transit", "return_received", "refund_processing"];
+
+  function orderLinePaidAmount(order, index) {
+    const line = order?.items?.[index];
+    if (!line) return 0;
+    if (Number.isFinite(Number(line.paidAmount))) return cents(Number(line.paidAmount));
+    const goodsNet = Math.max(0, Number(order.subtotal || 0) - Number(order.discount || 0));
+    const lineGross = Number(line.price || 0) * Number(line.qty || 0);
+    const gross = (order.items || []).reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0), 0);
+    return cents(gross ? goodsNet * lineGross / gross : 0);
+  }
+
+  function itemAfterSaleQty(state, orderId, itemIndex, statuses = [...AFTER_SALE_OPEN, "refunded"]) {
+    return state.afterSales.filter(ticket => ticket.orderId === orderId && statuses.includes(ticket.status))
+      .reduce((sum, ticket) => sum + (ticket.items || []).filter(item => Number(item.orderItemIndex) === itemIndex)
+        .reduce((qty, item) => qty + Number(item.qty || 0), 0), 0);
+  }
+
+  function itemAfterSaleAmount(state, orderId, itemIndex, statuses = [...AFTER_SALE_OPEN, "refunded"]) {
+    return cents(state.afterSales.filter(ticket => ticket.orderId === orderId && statuses.includes(ticket.status))
+      .reduce((sum, ticket) => sum + (ticket.items || []).filter(item => Number(item.orderItemIndex) === itemIndex)
+        .reduce((amount, item) => amount + Number(item.amount || 0), 0), 0));
+  }
+
+  function isMerchantFault(reason) {
+    return ["商品质量问题", "商品与描述不符", "少件/漏发", "错发商品"].includes(String(reason || ""));
+  }
+
+  function applyAfterSale({ orderId, type, reason, description = "", items = [] }) {
     const state = read();
     const order = findOrder(state, orderId);
-    const eligible = ["to_ship", "to_receive", "completed"].includes(order?.status);
-    const openTicket = state.afterSales.find(item => item.orderId === orderId && ["pending", "approved"].includes(item.status));
-    if (!eligible || openTicket) throw new Error("订单当前不可申请售后，或已有处理中申请");
-    const refundable = cents(Math.max(0, Number(order.total) - Number(order.refundedAmount || 0)));
-    const refundAmount = Number(amount || refundable);
-    if (!Number.isFinite(refundAmount) || refundAmount <= 0 || refundAmount > refundable) {
-      throw new Error("退款金额需大于 0 且不超过订单剩余可退金额");
+    if (!order || order.userId !== state.user.id || !["to_ship", "to_receive", "completed"].includes(order.status)) {
+      throw new Error("订单当前不可申请售后");
     }
+    if (!Array.isArray(items) || !items.length) throw new Error("请选择要申请售后的商品及数量");
+    const saleType = type || (order.status === "to_ship" ? "refund" : "return_refund");
+    if (!["refund", "return_refund"].includes(saleType)) throw new Error("不支持的售后类型");
+    if (order.status !== "to_ship" && saleType !== "return_refund") throw new Error("已发货订单需先退货再退款");
+    if (order.status === "to_ship" && saleType !== "refund") throw new Error("待发货订单请选择仅退款");
+    const requested = new Map();
+    items.forEach(entry => {
+      const index = Number(entry.orderItemIndex);
+      const qty = Number(entry.qty);
+      if (!Number.isInteger(index) || index < 0 || index >= order.items.length || !Number.isInteger(qty) || qty < 1) {
+        throw new Error("售后商品或数量无效");
+      }
+      requested.set(index, Number(requested.get(index) || 0) + qty);
+    });
+    const selectedItems = [];
+    let goodsRefund = 0;
+    for (const [index, qty] of requested) {
+      const orderItem = order.items[index];
+      const usedQty = itemAfterSaleQty(state, orderId, index);
+      const remainingQty = Math.max(0, Number(orderItem.qty || 0) - usedQty);
+      if (qty > remainingQty) throw new Error(`${orderItem.name}可申请数量不足，不能重复申请`);
+      const paidAmount = orderLinePaidAmount(order, index);
+      const usedAmount = itemAfterSaleAmount(state, orderId, index);
+      const lineRefund = qty === remainingQty
+        ? cents(Math.max(0, paidAmount - usedAmount))
+        : cents(paidAmount * qty / Math.max(1, Number(orderItem.qty || 1)));
+      if (lineRefund <= 0) throw new Error("所选商品没有可退款金额");
+      goodsRefund = cents(goodsRefund + lineRefund);
+      selectedItems.push({
+        orderItemIndex: index,
+        productId: orderItem.productId,
+        skuId: orderItem.skuId,
+        skuLabel: orderItem.skuLabel || "",
+        name: orderItem.name,
+        qty,
+        amount: lineRefund
+      });
+    }
+    const allItemsReturned = order.items.every((item, index) =>
+      itemAfterSaleQty(state, orderId, index) + Number(requested.get(index) || 0) >= Number(item.qty || 0));
+    const shippingRefund = allItemsReturned && isMerchantFault(reason) && !Number(order.refundedShippingAmount || 0)
+      ? Number(order.shippingFee || 0)
+      : 0;
+    const now = nowText();
     const ticket = {
       id: uid("AS"),
       orderId,
-      type,
+      userId: order.userId,
+      type: saleType,
       reason: reason || "其他问题",
-      description,
-      amount: cents(refundAmount),
+      description: String(description || "").trim(),
+      items: selectedItems,
+      goodsRefundAmount: goodsRefund,
+      shippingRefundAmount: cents(shippingRefund),
+      amount: cents(goodsRefund + shippingRefund),
+      returnRequired: saleType === "return_refund",
+      returnFreightPayer: isMerchantFault(reason) ? "merchant" : "buyer",
+      returnShipment: { carrier: "", trackingNo: "", shippedAt: "", receivedAt: "", inspectionStatus: "pending", restocked: false },
+      refund: { status: "not_started", succeededAt: "", refundNo: "" },
       status: "pending",
-      createdAt: nowText()
+      createdAt: now
     };
     state.afterSales.unshift(ticket);
+    order.afterSaleIds ||= [];
+    order.afterSaleIds.push(ticket.id);
     order.afterSaleId = ticket.id;
+    write(state);
+    return ticket;
+  }
+
+  function submitReturnShipment(ticketId, { carrier, trackingNo }) {
+    const state = read();
+    const ticket = state.afterSales.find(item => item.id === ticketId);
+    if (!ticket || ticket.userId !== state.user.id || ticket.status !== "approved_wait_return" || !ticket.returnRequired) {
+      throw new Error("当前售后单不可填写退货物流");
+    }
+    if (!carrier || !String(trackingNo || "").trim()) throw new Error("请填写退货承运商和物流单号");
+    ticket.returnShipment = {
+      ...(ticket.returnShipment || {}),
+      carrier,
+      trackingNo: String(trackingNo).trim(),
+      shippedAt: nowText(),
+      tracking: [{ time: nowText(), text: "用户已寄出退货商品", place: "退货物流" }],
+      inspectionStatus: "pending"
+    };
+    ticket.status = "return_in_transit";
     write(state);
     return ticket;
   }
@@ -796,6 +900,86 @@
     }
   }
 
+  function completeAfterSaleRefund(state, ticket) {
+    if (ticket.refund?.status === "succeeded" || ticket.status === "refunded") return ticket;
+    const order = findOrder(state, ticket.orderId);
+    if (!order) throw new Error("售后关联订单不存在");
+    const goodsRefund = cents(Number(ticket.goodsRefundAmount ?? ticket.amount ?? 0));
+    const shippingRefund = cents(Number(ticket.shippingRefundAmount || 0));
+    const refundAmount = cents(goodsRefund + shippingRefund);
+    if (refundAmount <= 0 || refundAmount > Number(order.total || 0) - Number(order.refundedAmount || 0) + 0.01) {
+      throw new Error("退款金额超出订单剩余可退金额");
+    }
+    const now = nowText();
+    ticket.refund = { ...(ticket.refund || {}), status: "succeeded", succeededAt: now, refundNo: ticket.refund?.refundNo || uid("RF") };
+    ticket.status = "refunded";
+    ticket.refundedAt = now;
+    ticket.refundedAmount = refundAmount;
+    ticket.goodsRefundAmount = goodsRefund;
+    ticket.shippingRefundAmount = shippingRefund;
+    order.refundedAmount = cents(Number(order.refundedAmount || 0) + refundAmount);
+    order.refundedGoodsAmount = cents(Number(order.refundedGoodsAmount || 0) + goodsRefund);
+    order.refundedShippingAmount = cents(Number(order.refundedShippingAmount || 0) + shippingRefund);
+    order.refundHistory ||= [];
+    order.refundHistory.push({ ticketId: ticket.id, goodsAmount: goodsRefund, shippingAmount: shippingRefund, amount: refundAmount, createdAt: now });
+    const fullyReturned = order.items.every((item, index) =>
+      itemAfterSaleQty(state, order.id, index, ["refunded"]) >= Number(item.qty || 0));
+    if (fullyReturned || order.refundedAmount >= Number(order.total || 0) - 0.01) {
+      order.status = "refunded";
+      order.refundedAt = now;
+    }
+    const buyer = state.users.find(item => item.id === order.userId);
+    if (buyer) buyer.spend = Math.max(0, cents(Number(buyer.spend || 0) - refundAmount));
+    const goodsNet = Math.max(1, Number(order.subtotal || 0) - Number(order.discount || 0));
+    if (order.pointsAwarded) {
+      const totalReversed = Math.min(Number(order.pointsAwarded), Math.floor(Number(order.pointsAwarded) * Number(order.refundedGoodsAmount || 0) / goodsNet));
+      const delta = Math.max(0, totalReversed - Number(order.pointsReversed || 0));
+      order.pointsReversed = totalReversed;
+      if (delta > 0 && buyer) buyer.points = Math.max(0, Number(buyer.points || 0) - delta);
+      if (delta > 0 && state.user.id === order.userId) {
+        state.user.points = Math.max(0, Number(state.user.points || 0) - delta);
+        state.points = state.user.points;
+      }
+      syncUserTier(state);
+    }
+    adjustCommissionsForRefund(state, ticket.orderId, goodsRefund, ticket.id);
+    return ticket;
+  }
+
+  function confirmReturnReceipt(ticketId, { accepted, note = "" } = {}) {
+    const state = read();
+    const ticket = state.afterSales.find(item => item.id === ticketId);
+    if (!ticket || ticket.status !== "return_in_transit") throw new Error("退货单当前不可验收");
+    const order = findOrder(state, ticket.orderId);
+    if (!order) throw new Error("售后关联订单不存在");
+    ticket.returnShipment ||= {};
+    ticket.returnShipment.receivedAt = nowText();
+    ticket.returnShipment.inspectionStatus = accepted ? "accepted" : "rejected";
+    ticket.returnShipment.inspectionNote = String(note || "");
+    if (!accepted) {
+      ticket.status = "inspection_failed";
+      ticket.reviewNote = String(note || "退货验收未通过");
+      write(state);
+      return ticket;
+    }
+    if (!ticket.returnShipment.restocked) {
+      ticket.items.forEach(line => {
+        const orderItem = order.items[Number(line.orderItemIndex)];
+        const product = state.products.find(item => item.id === (orderItem?.productId || line.productId));
+        const sku = product?.skus?.find(item => item.id === (orderItem?.skuId || line.skuId))
+          || (product?.skus?.length === 1 ? product.skus[0] : null);
+        if (sku) sku.stock = Number(sku.stock || 0) + Number(line.qty || 0);
+        if (product) product.stock = (product.skus || []).reduce((sum, item) => sum + Number(item.stock || 0), 0);
+      });
+      ticket.returnShipment.restocked = true;
+      ticket.returnShipment.restockedAt = nowText();
+    }
+    ticket.status = "return_received";
+    completeAfterSaleRefund(state, ticket);
+    write(state);
+    return ticket;
+  }
+
   function adjustCommissionsForRefund(state, orderId, refundAmount, ticketId) {
     const order = findOrder(state, orderId);
     if (!order) return;
@@ -850,30 +1034,25 @@
     const ticket = state.afterSales.find(item => item.id === ticketId);
     if (!ticket || ticket.status !== "pending") throw new Error("售后单当前不可审核");
     const order = findOrder(state, ticket.orderId);
+    if (!["approve", "reject"].includes(decision)) throw new Error("审核结果无效");
     ticket.reviewNote = note;
     ticket.reviewedAt = nowText();
     if (decision === "approve") {
-      ticket.status = "refunded";
-      ticket.refundedAt = nowText();
-      if (order) {
-        order.refundedAmount = cents(Number(order.refundedAmount || 0) + Number(ticket.amount));
-        if (order.refundedAmount >= Number(order.total || 0) - 0.01) order.status = "refunded";
-        order.refundedAt = nowText();
-        const buyer = state.users.find(item => item.id === order.userId);
-        if (buyer) buyer.spend = Math.max(0, Math.round((Number(buyer.spend || 0) - Number(ticket.amount)) * 100) / 100);
-        if (order.pointsAwarded) {
-          const pointsToRevoke = Math.min(order.pointsAwarded, Math.floor(Number(ticket.amount)));
-          state.user.points = Math.max(0, Number(state.user.points || 0) - pointsToRevoke);
-          state.points = state.user.points;
-          if (buyer) buyer.points = Math.max(0, Number(buyer.points || 0) - pointsToRevoke);
-          order.pointsAwarded -= pointsToRevoke;
-          syncUserTier(state);
-        }
+      if (ticket.returnRequired) {
+        ticket.status = "approved_wait_return";
+      } else {
+        ticket.status = "refund_processing";
+        ticket.refund = { ...(ticket.refund || {}), status: "processing", requestedAt: nowText() };
+        completeAfterSaleRefund(state, ticket);
       }
-      adjustCommissionsForRefund(state, ticket.orderId, ticket.amount, ticket.id);
     } else {
       ticket.status = "rejected";
-      if (order?.afterSaleId === ticket.id) delete order.afterSaleId;
+      if (order?.afterSaleId === ticket.id) {
+        const previous = (order.afterSaleIds || []).filter(item => item !== ticket.id)
+          .map(id => state.afterSales.find(entry => entry.id === id)).filter(Boolean);
+        if (previous.length) order.afterSaleId = previous[previous.length - 1].id;
+        else delete order.afterSaleId;
+      }
     }
     write(state);
     return ticket;
@@ -889,6 +1068,40 @@
     state.claimedCoupons.unshift({ claimId: uid("CC"), couponId, status: "available", receivedAt: nowText() });
     write(state);
     return coupon;
+  }
+
+  function refreshMembershipBenefits() {
+    const state = read();
+    const birthday = String(state.user?.birthday || "");
+    const birthMonth = birthday.match(/^\d{4}-(\d{2})-/)?.[1];
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    if (!birthMonth || birthMonth !== month) return state;
+    state.birthdayCouponIssues ||= [];
+    const couponId = state.membershipSettings?.birthdayCouponId;
+    const coupon = state.coupons.find(item => item.id === couponId && item.status === "active");
+    if (!coupon || Number(coupon.stock) <= 0) return state;
+    if (state.birthdayCouponIssues.some(item => item.userId === state.user.id && Number(item.year) === year)) return state;
+    const lastDay = String(new Date(year, now.getMonth() + 1, 0).getDate()).padStart(2, "0");
+    const today = `${year}-${month}-${String(now.getDate()).padStart(2, "0")}`;
+    const claimId = uid("CC");
+    const claim = {
+      claimId,
+      couponId,
+      status: "available",
+      receivedAt: today,
+      validFrom: `${year}-${month}-01`,
+      expiresAt: `${year}-${month}-${lastDay}`,
+      source: "birthday",
+      sourceYear: year
+    };
+    coupon.stock = Number(coupon.stock) - 1;
+    coupon.claimed = Number(coupon.claimed || 0) + 1;
+    state.claimedCoupons.unshift(claim);
+    state.birthdayCouponIssues.unshift({ userId: state.user.id, couponId, year, claimId, issuedAt: today });
+    write(state);
+    return state;
   }
 
   function joinGroup(dealId, orderId) {
@@ -1342,17 +1555,19 @@
   function saveCommissionRule({ name, tiers, effectiveAt, note, scope = "全场商品" }, actor = "林运营") {
     const state = read();
     ensureDistribution(state);
-    const rates = Object.values(tiers || {}).flat();
+    const normalizedTiers = Object.fromEntries(Object.entries(tiers || {}).map(([tier, values]) => [
+      tier,
+      [Array.isArray(values) ? values[0] : values]
+    ]));
+    const rates = Object.values(normalizedTiers).flat();
     if (!name || !effectiveAt || !Number.isFinite(Date.parse(effectiveAt)) || scope !== "全场商品"
+      || ["standard", "silver", "gold"].some(tierId => !normalizedTiers[tierId]?.length)
       || rates.some(rate => !Number.isFinite(Number(rate)) || Number(rate) < 0 || Number(rate) > 50)) throw new Error("佣金规则字段无效，单层比例须为 0–50%");
-    for (const row of Object.values(tiers)) {
-      if (row.reduce((sum, rate) => sum + Number(rate), 0) > 100) throw new Error("各级佣金比例合计不能超过 100%");
-    }
     const active = state.commissionRuleVersions.find(item => item.status === "active");
     const effectiveNow = Date.parse(effectiveAt) <= Date.now();
     if (active && effectiveNow) active.status = "archived";
     const version = `CR-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${state.commissionRuleVersions.length + 1}`;
-    const rule = { id: version, name, status: effectiveNow ? "active" : "scheduled", tiers, effectiveAt, scope, note: String(note || ""), createdAt: nowText() };
+    const rule = { id: version, name, status: effectiveNow ? "active" : "scheduled", tiers: normalizedTiers, effectiveAt, scope, note: String(note || ""), createdAt: nowText() };
     state.commissionRuleVersions.unshift(rule);
     addAudit(state, "commission.rule.publish", version, note || "发布佣金规则版本", actor, { activeVersion: active?.id || "" }, { version, status: rule.status, effectiveAt, scope });
     write(state);
@@ -1391,7 +1606,7 @@
     const state = read();
     ensureDistribution(state);
     const before = { ...state.distributionSettings };
-    const next = { ...before, ...settings };
+    const next = { ...before, ...settings, maxLevels: 1 };
     const numericKeys = ["freezeDays", "minimumPayout", "singlePayoutLimit", "dailyPayoutLimit", "autoReviewThreshold"];
     if (numericKeys.some(key => !Number.isFinite(Number(next[key])) || Number(next[key]) < 0)) throw new Error("分销结算参数需为非负数值");
     if (Number(next.singlePayoutLimit) < Number(next.minimumPayout) || Number(next.dailyPayoutLimit) < Number(next.singlePayoutLimit)) {
@@ -1479,8 +1694,11 @@
     submitReview,
     replyReview,
     applyAfterSale,
+    submitReturnShipment,
+    confirmReturnReceipt,
     reviewAfterSale,
     claimCoupon,
+    refreshMembershipBenefits,
     joinGroup,
     createWithdrawal,
     reviewWithdrawal,

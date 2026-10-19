@@ -180,6 +180,7 @@
       <label class="field"><span>划线价</span><input data-sku-original type="number" min="0" step="0.01" value="${Number(sku.originalPrice ?? sku.price ?? 0)}"></label>
       <label class="field"><span>库存</span><input data-sku-stock type="number" min="0" step="1" required value="${Number(sku.stock || 0)}"></label>
       <label class="field"><span>SKU 状态</span><select data-sku-status><option value="on" ${sku.status !== "off" ? "selected" : ""}>可售</option><option value="off" ${sku.status === "off" ? "selected" : ""}>停售</option></select></label>
+      <label class="field"><span>会员专享价（等级=价格）</span><input data-sku-member-prices value="${esc(Object.entries(sku.memberPrices || {}).map(([tierId, price]) => `${tierId}=${price}`).join(", "))}" placeholder="silver=1249, gold=1199"></label>
       <button type="button" class="sku-remove" data-action="remove-sku" aria-label="删除此 SKU">删除</button>
     </div>`).join("");
     const backdrop = openModal(editing ? "编辑商品 · SPU / SKU" : "新增商品 · SPU / SKU", `<form id="product-form" class="product-editor-form">
@@ -195,7 +196,7 @@
           <div class="field">首页标签<div class="product-tag-options">${tagOptions}</div></div>
         </div>
       </section>
-      <section class="product-editor-section"><div class="product-editor-heading"><span>02</span><div><strong>SKU 规格与库存</strong><small>每个 SKU 独立售价、划线价、可售库存和状态</small></div></div>
+      <section class="product-editor-section"><div class="product-editor-heading"><span>02</span><div><strong>SKU 规格与库存</strong><small>每个 SKU 独立售价、库存、状态和会员专享价；会员价格式：等级 ID=价格，多个用逗号分隔</small></div></div>
         <div class="sku-editor-head"><span>规格组合</span><span>SKU 编码</span><span>售价 / 划线价 / 库存</span><span>状态</span></div>
         <div id="sku-editor-rows">${skuRows}</div>
         <button type="button" class="sku-add-button" data-action="add-sku">＋ 添加 SKU 规格</button>
@@ -225,6 +226,7 @@
         <label class="field"><span>划线价</span><input data-sku-original type="number" min="0" step="0.01" value="0"></label>
         <label class="field"><span>库存</span><input data-sku-stock type="number" min="0" step="1" required value="0"></label>
         <label class="field"><span>SKU 状态</span><select data-sku-status><option value="on">可售</option><option value="off">停售</option></select></label>
+        <label class="field"><span>会员专享价（等级=价格）</span><input data-sku-member-prices value="" placeholder="silver=1249, gold=1199"></label>
         <button type="button" class="sku-remove" data-action="remove-sku" aria-label="删除此 SKU">删除</button>`;
       container.appendChild(row);
       row.querySelector("[data-sku-specs]").focus();
@@ -255,6 +257,15 @@
         const skuPrice = Number(row.querySelector("[data-sku-price]").value);
         const skuStock = Number(row.querySelector("[data-sku-stock]").value);
         if (!specLabel || !Number.isFinite(skuPrice) || skuPrice < 0 || !Number.isInteger(skuStock) || skuStock < 0) throw new Error("请检查每个 SKU 的规格、售价和整数库存");
+        const memberPrices = {};
+        String(row.querySelector("[data-sku-member-prices]").value || "").split(/[,，]/).map(value => value.trim()).filter(Boolean).forEach(entry => {
+          const [tierId, rawPrice] = entry.split(/[=:：]/).map(value => value.trim());
+          const memberPrice = Number(rawPrice);
+          if (!state.tiers.some(tier => tier.id === tierId) || !Number.isFinite(memberPrice) || memberPrice <= 0 || memberPrice > skuPrice) {
+            throw new Error("会员专享价需使用有效等级 ID，且价格须大于 0、不高于 SKU 售价");
+          }
+          memberPrices[tierId] = memberPrice;
+        });
         return {
           id: row.querySelector("[data-sku-id]").value.trim() || `${spuId}-SKU-${String(index + 1).padStart(3, "0")}`,
           spuId,
@@ -262,6 +273,7 @@
           label: specLabel.replace(/[=:：]/g, " ").replace(/[\/；;]/g, " / "),
           price: skuPrice,
           originalPrice: Number(row.querySelector("[data-sku-original]").value || skuPrice),
+          memberPrices,
           stock: skuStock,
           image: gallery[0],
           salesCount: Number(item.skus?.find(sku => sku.id === row.querySelector("[data-sku-id]").value.trim())?.salesCount || 0),
@@ -379,13 +391,19 @@
   function renderMembership() {
     state = read();
     const tiers = [...state.tiers].sort((a, b) => a.points - b.points);
+    state.membershipSettings ||= { birthdayCouponId: "" };
     const actions = `<button class="admin-btn" data-action="preview-member">${icon("member")}预览小程序</button><button class="admin-btn primary" data-action="add-tier">${icon("plus")}新增等级</button>`;
     const cards = tiers.map((tier, index) => `<article class="tier-admin-card">
       <div class="tier-admin-top"><span class="tier-admin-name">${esc(tier.name)}</span><span>LEVEL 0${index + 1}</span></div>
       <div class="tier-admin-discount">${tier.discount === 100 ? "会员价" : `${Number(tier.discount) / 10} 折`}<small>　全场购物</small></div>
-      <div class="tier-admin-foot">门槛：${Number(tier.points).toLocaleString()} 积分<br>${esc(tier.benefits)}</div>
+      <div class="tier-admin-foot">门槛：${Number(tier.points).toLocaleString()} 积分 · 积分倍率 ×${Number(tier.pointsMultiplier || 1)}<br>${esc(tier.benefits)}</div>
       <div class="tier-admin-actions"><button class="text-action" data-action="edit-tier" data-id="${esc(tier.id)}">编辑规则 ${icon("chevron")}</button></div>
     </article>`).join("");
+    const birthdayCouponOptions = state.coupons.map(coupon =>
+      `<option value="${esc(coupon.id)}" ${coupon.id === state.membershipSettings.birthdayCouponId ? "selected" : ""}>${esc(coupon.name)}${coupon.status === "active" ? "" : "（已暂停）"}</option>`
+    ).join("");
+    const configuredBirthdayCoupon = state.coupons.find(item => item.id === state.membershipSettings.birthdayCouponId);
+    const currentYearIssues = (state.birthdayCouponIssues || []).filter(item => Number(item.year) === new Date().getFullYear()).length;
     root.innerHTML = adminShell("membership", `${pageHead("会员等级与折扣", "配置成长门槛与会员权益，保存后同步到小程序会员中心。", actions)}
       <div class="stats-row">
         ${stat("会员等级", tiers.length, "支持按成长积分升级")}
@@ -395,33 +413,50 @@
       </div>
       <div class="section-head" style="margin:0 0 10px"><h2 style="font-size:13px">等级配置</h2><span class="inline-help">拖动排序暂不启用，等级按积分门槛自动排序</span></div>
       <div class="tiers-grid">${cards}</div>
+      <section class="panel" style="margin:14px 0">
+        <div class="panel-head"><span class="panel-title">生日月统一优惠券</span><span class="panel-note">${configuredBirthdayCoupon ? esc(configuredBirthdayCoupon.name) : "未配置"}</span></div>
+        <div class="panel-body" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label class="field" style="min-width:260px">生日券模板<select id="birthday-coupon-select"><option value="">不发放</option>${birthdayCouponOptions}</select></label>
+          <button class="admin-btn primary" data-action="save-birthday-coupon">保存配置</button>
+          <span class="inline-help">生日月首次访问时模拟发放，月底到期；每位会员每年一次。当前演示账户本年已发 ${currentYearIssues} 次。</span>
+        </div>
+      </section>
       <div class="compare-layout">
         <section class="panel"><div class="panel-head"><span class="panel-title">小程序权益展示预览</span><span class="panel-note">读取当前已保存规则</span></div>
-          <div class="comparison-preview">${tiers.map(tier => `<div><strong>${esc(tier.name)}</strong><span>${tier.discount === 100 ? "会员价" : `${Number(tier.discount) / 10} 折`}</span><small>${Number(tier.points).toLocaleString()} 积分起</small></div>`).join("")}</div>
+          <div class="comparison-preview">${tiers.map(tier => `<div><strong>${esc(tier.name)}</strong><span>${tier.discount === 100 ? "会员价" : `${Number(tier.discount) / 10} 折`}</span><small>${Number(tier.points).toLocaleString()} 积分起 · 积分 ×${Number(tier.pointsMultiplier || 1)}</small></div>`).join("")}</div>
         </section>
         <section class="panel"><div class="panel-head"><span class="panel-title">升级规则说明</span></div><div class="panel-body"><div class="rule-list">
           <div class="rule-item"><span class="rule-bullet">1</span><span>用户达到对应成长积分门槛后，自动升级至最高可达等级。</span></div>
-          <div class="rule-item"><span class="rule-bullet">2</span><span>折扣按订单商品金额计算；保存后小程序会员页展示最新折扣。</span></div>
-          <div class="rule-item"><span class="rule-bullet">3</span><span>调整门槛时请保持等级梯度递增，避免成长区间重叠。</span></div>
+          <div class="rule-item"><span class="rule-bullet">2</span><span>SKU 会员价优先于等级折扣，二者不叠加；未配置 SKU 会员价时再用全场等级折扣。</span></div>
+          <div class="rule-item"><span class="rule-bullet">3</span><span>确认收货按商品实付净额乘积分倍率发放积分，不含运费。</span></div>
+          <div class="rule-item"><span class="rule-bullet">4</span><span>调整门槛时请保持等级梯度递增；生日券发放需选择有效优惠券模板。</span></div>
         </div></div></section>
       </div>`);
   }
 
   function tierForm(tier = null) {
     const editing = Boolean(tier);
-    const item = tier || { id: "", name: "", points: "", discount: 95, benefits: "" };
+    const item = tier || { id: "", name: "", points: "", discount: 95, pointsMultiplier: 1, benefits: "" };
     const backdrop = openModal(editing ? "编辑会员等级" : "新增会员等级", `<form id="tier-form"><div class="form-grid">
       <label class="field">等级名称<input name="name" required value="${esc(item.name)}" placeholder="例如：金卡会员"></label>
       <label class="field">成长积分门槛<input name="points" type="number" min="0" required value="${item.points}" placeholder="例如：5000"></label>
       <label class="field">全场折扣（折）<input name="discount" type="number" min="1" max="10" step=".1" required value="${Number(item.discount) / 10}"></label>
+      <label class="field">积分倍率<input name="pointsMultiplier" type="number" min="1" max="10" step=".1" required value="${Number(item.pointsMultiplier || 1)}"></label>
       <label class="field" style="grid-column:1/-1">核心权益描述<input name="benefits" required value="${esc(item.benefits)}" placeholder="例如：每月专属礼券 · 新品优先购"></label>
-      <div class="inline-help" style="grid-column:1/-1">折扣填写 9 代表 9 折；积分和折扣规则会同步至会员中心。</div>
+      <div class="inline-help" style="grid-column:1/-1">折扣填写 9 代表 9 折；积分倍率按商品实付金额计算。</div>
       <input type="hidden" name="id" value="${esc(item.id)}">
     </div></form>`, `<button class="secondary-btn" type="button" data-modal-close>取消</button><button class="primary-btn small" form="tier-form" type="submit">保存等级</button>`);
     backdrop.querySelector("#tier-form").addEventListener("submit", event => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
-      const data = { id: form.get("id") || `tier-${Date.now()}`, name: String(form.get("name")).trim(), points: Number(form.get("points")), discount: Number(form.get("discount")) * 10, benefits: String(form.get("benefits")).trim() };
+      const data = {
+        id: form.get("id") || `tier-${Date.now()}`,
+        name: String(form.get("name")).trim(),
+        points: Number(form.get("points")),
+        discount: Number(form.get("discount")) * 10,
+        pointsMultiplier: Number(form.get("pointsMultiplier")),
+        benefits: String(form.get("benefits")).trim()
+      };
       const index = state.tiers.findIndex(entry => entry.id === data.id);
       if (index >= 0) state.tiers[index] = data;
       else state.tiers.push(data);
@@ -579,6 +614,15 @@
     } else if (action === "add-tier") tierForm();
     else if (action === "edit-tier") tierForm(state.tiers.find(item => item.id === id));
     else if (action === "preview-member") window.open("mini-membership.html", "_blank");
+    else if (action === "save-birthday-coupon") {
+      const couponId = root.querySelector("#birthday-coupon-select")?.value || "";
+      if (couponId && !state.coupons.some(item => item.id === couponId)) return toast("所选生日券不存在");
+      state.membershipSettings ||= {};
+      state.membershipSettings.birthdayCouponId = couponId;
+      write(state);
+      renderMembership();
+      toast(couponId ? "生日券规则已保存" : "已关闭生日券发放");
+    }
     else if (action === "add-banner") bannerForm();
     else if (action === "edit-banner") bannerForm(state.banners.find(item => item.id === id));
     else if (action === "move-banner") {
