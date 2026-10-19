@@ -89,6 +89,15 @@
     return state.products.flatMap(product => (product.reviews || []).map(review => ({ ...review, productName: product.name })));
   }
 
+  function reviewImagesMarkup(images, className) {
+    if (!Array.isArray(images) || !images.length) return "";
+    return `<div class="${className}">${images.map((source, index) => `<button type="button" class="review-image-button" data-review-image="${esc(source)}" aria-label="查看评价图片 ${index + 1}"><img src="${esc(source)}" alt="评价图片 ${index + 1}"></button>`).join("")}</div>`;
+  }
+
+  function openReviewImage(source) {
+    openModal("评价图片", `<img class="review-image-large" src="${esc(source)}" alt="用户评价图片">`);
+  }
+
   function renderReviews() {
     state = read();
     const reviews = allReviews().filter(review => {
@@ -103,7 +112,7 @@
       <td><strong>${esc(review.productName)}</strong><small class="review-meta">${esc(review.skuLabel || "商品评价")}</small></td>
       <td><strong>${esc(review.name || "商城用户")}</strong><small class="review-meta">${esc(review.orderId || "演示评价")}</small></td>
       <td><span class="review-admin-stars">${"★".repeat(Math.max(1, Math.min(5, Number(review.rating || 5))))}</span><small class="review-meta">${Number(review.rating || 5)} 分</small></td>
-      <td class="review-admin-text">${esc(review.text || "仅评分")}</td>
+      <td class="review-admin-text">${esc(review.text || "仅评分")}${reviewImagesMarkup(review.images, "review-admin-images")}</td>
       <td>${esc(review.date || review.createdAt || "")}</td>
       <td>${review.reply?.text ? `<span class="status">已回复</span><small class="review-reply-preview">${esc(review.reply.text)}</small>` : `<span class="status off">待回复</span>`}</td>
       <td><button class="text-action" data-action="reply-review" data-id="${esc(review.id)}">${review.reply?.text ? "编辑回复" : "回复用户"}</button></td>
@@ -126,15 +135,21 @@
       </section>`);
     root.querySelector("#review-search")?.addEventListener("input", event => { reviewQuery = event.target.value; renderReviews(); });
     root.querySelector("#review-filter")?.addEventListener("change", event => { reviewFilter = event.target.value; renderReviews(); });
+    root.querySelectorAll("[data-review-image]").forEach(button => {
+      button.addEventListener("click", () => openReviewImage(button.dataset.reviewImage));
+    });
   }
 
   function replyReviewForm(reviewId) {
     state = read();
     const review = allReviews().find(item => item.id === reviewId);
     if (!review) return toast("评价记录不存在");
-    const backdrop = openModal("回复用户评价", `<div class="review-reply-context"><strong>${esc(review.productName)} · ${esc(review.name || "商城用户")}</strong><p>${esc(review.text || "用户仅提交了评分")}</p></div>
+    const backdrop = openModal("回复用户评价", `<div class="review-reply-context"><strong>${esc(review.productName)} · ${esc(review.name || "商城用户")}</strong><p>${esc(review.text || "用户仅提交了评分")}</p>${reviewImagesMarkup(review.images, "review-reply-images")}</div>
       <form id="review-reply-form"><label class="field">运营回复<textarea name="reply" rows="4" maxlength="500" required placeholder="礼貌、清晰地回应用户">${esc(review.reply?.text || "")}</textarea></label></form>`,
       `<button type="button" class="secondary-btn" data-modal-close>取消</button><button type="button" class="primary-btn small" data-action="save-review-reply">保存回复</button>`);
+    backdrop.querySelectorAll("[data-review-image]").forEach(button => {
+      button.addEventListener("click", () => openReviewImage(button.dataset.reviewImage));
+    });
     backdrop.querySelector("[data-action='save-review-reply']")?.addEventListener("click", () => {
       const form = backdrop.querySelector("#review-reply-form");
       if (!form.reportValidity()) return;

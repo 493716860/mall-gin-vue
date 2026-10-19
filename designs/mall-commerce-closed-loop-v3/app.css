@@ -438,6 +438,20 @@ img { display: block; max-width: 100%; }
 .review-meta { display: block; margin-top: 4px; color: #9b9ea3; font-size: 8px; }
 .review-admin-stars { color: #e99b44; letter-spacing: 1px; }
 .review-admin-text { min-width: 210px; max-width: 310px; white-space: normal; line-height: 1.6; overflow-wrap: anywhere; }
+.review-photo-upload { margin-top: 12px; border: 1px solid #eee8e2; border-radius: 9px; padding: 11px; background: #fcfaf8; }
+.review-photo-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; color: #555; font-size: 10px; }
+.review-photo-heading small, .review-photo-hint { color: #999; font-size: 9px; }
+.review-photo-add { display: inline-flex; min-height: 34px; align-items: center; gap: 6px; border: 1px dashed #d9c8ba; border-radius: 6px; padding: 0 10px; color: #876e5a; background: #fff; font-size: 9px; }
+.review-photo-add svg { width: 14px; height: 14px; }
+.review-photo-add:disabled { cursor: not-allowed; opacity: .45; }
+.review-photo-previews, .review-admin-images, .review-reply-images { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+.review-photo-thumb { position: relative; width: 64px; height: 64px; }
+.review-photo-thumb img { width: 100%; height: 100%; border-radius: 6px; object-fit: cover; }
+.review-photo-thumb button { position: absolute; top: -5px; right: -5px; display: grid; width: 19px; height: 19px; place-items: center; border: 0; border-radius: 50%; color: #fff; background: rgba(40,40,40,.78); font-size: 15px; line-height: 1; }
+.review-photo-hint { display: block; margin-top: 8px; }
+.review-image-button { display: block; width: 42px; height: 42px; flex: 0 0 auto; overflow: hidden; border: 1px solid #eee; border-radius: 5px; padding: 0; background: #f7f5f3; cursor: zoom-in; }
+.review-image-button img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.review-image-large { display: block; width: auto; max-width: 100%; max-height: 70vh; margin: 0 auto; object-fit: contain; }
 .review-reply-preview { display: block; max-width: 170px; margin-top: 5px; color: #888; white-space: normal; line-height: 1.5; }
 .review-reply-context { margin-bottom: 12px; border-radius: 7px; padding: 10px; background: #f7f7f7; }
 .review-reply-context strong { color: #444; font-size: 10px; }

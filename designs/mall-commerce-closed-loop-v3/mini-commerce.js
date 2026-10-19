@@ -34,6 +34,34 @@
     return statusNames[order.status] || order.status;
   }
 
+  function compressReviewImage(file) {
+    return new Promise((resolve, reject) => {
+      if (!file.type.startsWith("image/")) return reject(new Error("请选择图片文件"));
+      if (file.size > 8 * 1024 * 1024) return reject(new Error("原始图片不能超过 8 MB"));
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("图片读取失败"));
+      reader.onload = () => {
+        const image = new Image();
+        image.onerror = () => reject(new Error("无法识别这张图片"));
+        image.onload = () => {
+          const scale = Math.min(1, 1000 / Math.max(image.width, image.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(image.width * scale));
+          canvas.height = Math.max(1, Math.round(image.height * scale));
+          const context = canvas.getContext("2d");
+          context.fillStyle = "#fff";
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          const result = canvas.toDataURL("image/jpeg", 0.72);
+          if (result.length > 400_000) return reject(new Error("图片压缩后仍过大，请换一张图片"));
+          resolve(result);
+        };
+        image.src = String(reader.result || "");
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   function renderOrders() {
     state = read();
     const filters = [["all", "全部"], ["pending_payment", "待付款"], ["to_ship", "待发货"], ["to_receive", "待收货"], ["pending-review", "待评价"], ["completed", "已完成"], ["after-sale", "退款/售后"]];
@@ -153,20 +181,75 @@
         const order = window.MallOps.findOrder(read(), id);
         const item = order?.items?.[itemIndex];
         if (!item) throw new Error("评价商品不存在");
+        let reviewImages = [];
+        let uploadPending = false;
         const backdrop = openModal("评价商品", `<form id="review-form">
           <div class="review-product-mini"><img src="${esc(item.image || "")}" alt=""><span><strong>${esc(item.name)}</strong><small>${esc(item.skuLabel || "")}</small></span></div>
           <label class="field">商品评分<select name="rating" required><option value="5">★★★★★　非常满意</option><option value="4">★★★★　满意</option><option value="3">★★★　一般</option><option value="2">★★　不满意</option><option value="1">★　非常不满意</option></select></label>
           <label class="field" style="margin-top:11px">评价内容<textarea name="text" rows="4" maxlength="500" placeholder="分享你的使用体验（选填，最多 500 字）"></textarea></label>
+          <section class="review-photo-upload">
+            <div class="review-photo-heading"><strong>晒图</strong><small id="review-photo-count">0 / 3 张</small></div>
+            <button class="review-photo-add" type="button" data-action="choose-review-images">${icon("image")}<span>添加实拍图片</span></button>
+            <input id="review-photo-input" type="file" accept="image/*" multiple hidden>
+            <div class="review-photo-previews" id="review-photo-previews"></div>
+            <small class="review-photo-hint">最多 3 张；图片会自动压缩，合计不超过约 700 KB</small>
+          </section>
           <input type="hidden" name="orderId" value="${esc(id)}"><input type="hidden" name="itemIndex" value="${itemIndex}">
         </form>`, `<button class="secondary-btn" data-modal-close>取消</button><button class="primary-btn small" data-action="submit-review">提交评价</button>`);
+        const photoInput = backdrop.querySelector("#review-photo-input");
+        const photoPreviews = backdrop.querySelector("#review-photo-previews");
+        const photoCount = backdrop.querySelector("#review-photo-count");
+        const addPhotoButton = backdrop.querySelector("[data-action='choose-review-images']");
+        const submitButton = backdrop.querySelector("[data-action='submit-review']");
+        const renderReviewImages = () => {
+          photoCount.textContent = `${reviewImages.length} / 3 张`;
+          photoPreviews.innerHTML = reviewImages.map((source, index) => `<div class="review-photo-thumb"><img src="${esc(source)}" alt="评价图片 ${index + 1}"><button type="button" aria-label="移除图片">×</button></div>`).join("");
+          photoPreviews.querySelectorAll(".review-photo-thumb button").forEach((button, index) => {
+            button.addEventListener("click", () => {
+              reviewImages.splice(index, 1);
+              renderReviewImages();
+            });
+          });
+          addPhotoButton.disabled = uploadPending || reviewImages.length >= 3;
+          submitButton.disabled = uploadPending;
+        };
+        addPhotoButton.addEventListener("click", () => photoInput.click());
+        photoInput.addEventListener("change", async () => {
+          const files = Array.from(photoInput.files || []);
+          photoInput.value = "";
+          if (reviewImages.length + files.length > 3) toast("评价最多上传 3 张图片");
+          const selectedFiles = files.slice(0, Math.max(0, 3 - reviewImages.length));
+          if (!selectedFiles.length) return;
+          uploadPending = true;
+          renderReviewImages();
+          for (const file of selectedFiles) {
+            try {
+              const source = await compressReviewImage(file);
+              const existingSize = reviewImages.reduce((total, image) => total + image.length, 0);
+              if (existingSize + source.length > 900_000) throw new Error("图片合计不能超过约 700 KB");
+              reviewImages.push(source);
+              renderReviewImages();
+            } catch (error) {
+              toast(error.message || "图片上传失败");
+            }
+          }
+          uploadPending = false;
+          renderReviewImages();
+        });
+        renderReviewImages();
         backdrop.querySelector("[data-action='submit-review']").addEventListener("click", () => {
           const formElement = backdrop.querySelector("#review-form");
+          if (uploadPending) return toast("图片正在处理中，请稍候");
           if (!formElement.reportValidity()) return;
           const form = new FormData(formElement);
-          window.MallOps.submitReview({ orderId: form.get("orderId"), itemIndex: Number(form.get("itemIndex")), rating: Number(form.get("rating")), text: form.get("text") });
-          closeModal();
-          toast("评价提交成功");
-          renderOrders();
+          try {
+            window.MallOps.submitReview({ orderId: form.get("orderId"), itemIndex: Number(form.get("itemIndex")), rating: Number(form.get("rating")), text: form.get("text"), images: reviewImages });
+            closeModal();
+            toast("评价提交成功");
+            renderOrders();
+          } catch (error) {
+            toast(error.message || "评价提交失败");
+          }
         });
       } else if (action === "track") {
         const order = window.MallOps.findOrder(read(), id);

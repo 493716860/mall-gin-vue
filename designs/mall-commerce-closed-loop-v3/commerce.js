@@ -484,7 +484,7 @@
     return order;
   }
 
-  function submitReview({ orderId, itemIndex, rating, text = "" }) {
+  function submitReview({ orderId, itemIndex, rating, text = "", images = [] }) {
     const state = read();
     const order = findOrder(state, orderId);
     const index = Number(itemIndex);
@@ -500,6 +500,14 @@
     if (!product) throw new Error("商品信息不存在");
     const content = String(text).trim();
     if (content.length > 500) throw new Error("评价内容最多 500 字");
+    if (!Array.isArray(images) || images.length > 3) throw new Error("评价图片最多上传 3 张");
+    const photoList = images.map(source => String(source || ""));
+    if (photoList.some(source => !/^data:image\/(?:jpeg|png|webp);base64,/.test(source) || source.length > 400_000)) {
+      throw new Error("评价图片格式不正确或单张图片过大");
+    }
+    if (photoList.reduce((total, source) => total + source.length, 0) > 900_000) {
+      throw new Error("评价图片合计不能超过约 700 KB");
+    }
     product.reviews ||= [];
     const review = {
       id: uid("REV"),
@@ -514,7 +522,7 @@
       createdAt: nowText(),
       rating: score,
       text: content,
-      images: [],
+      images: photoList,
       status: "visible",
       reply: null
     };
