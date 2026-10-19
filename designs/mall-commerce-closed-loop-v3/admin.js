@@ -8,6 +8,9 @@
   let productQuery = "";
   let productCategory = "all";
   let productStatus = "all";
+  let reviewQuery = "";
+  let reviewFilter = "all";
+  const view = new URLSearchParams(location.search).get("view") || "";
   const tagNames = { top: "畅销", new: "新品", recommend: "推荐" };
   const categoryName = (parent, subcat) => {
     const zone = state.zones.find(item => item.id === parent);
@@ -80,6 +83,71 @@
     root.querySelector("#product-search").addEventListener("input", event => { productQuery = event.target.value; renderProductRows(); });
     root.querySelector("#product-category").addEventListener("change", event => { productCategory = event.target.value; renderProductRows(); });
     root.querySelector("#product-status").addEventListener("change", event => { productStatus = event.target.value; renderProductRows(); });
+  }
+
+  function allReviews() {
+    return state.products.flatMap(product => (product.reviews || []).map(review => ({ ...review, productName: product.name })));
+  }
+
+  function renderReviews() {
+    state = read();
+    const reviews = allReviews().filter(review => {
+      const queryMatch = !reviewQuery || `${review.productName} ${review.name} ${review.text} ${review.orderId || ""}`.toLowerCase().includes(reviewQuery.toLowerCase());
+      const replyMatch = reviewFilter === "all" || (reviewFilter === "replied" ? Boolean(review.reply?.text) : !review.reply?.text);
+      return queryMatch && replyMatch && review.status !== "hidden";
+    });
+    const total = allReviews();
+    const waiting = total.filter(review => !review.reply?.text).length;
+    const replied = total.length - waiting;
+    const rows = reviews.map(review => `<tr>
+      <td><strong>${esc(review.productName)}</strong><small class="review-meta">${esc(review.skuLabel || "商品评价")}</small></td>
+      <td><strong>${esc(review.name || "商城用户")}</strong><small class="review-meta">${esc(review.orderId || "演示评价")}</small></td>
+      <td><span class="review-admin-stars">${"★".repeat(Math.max(1, Math.min(5, Number(review.rating || 5))))}</span><small class="review-meta">${Number(review.rating || 5)} 分</small></td>
+      <td class="review-admin-text">${esc(review.text || "仅评分")}</td>
+      <td>${esc(review.date || review.createdAt || "")}</td>
+      <td>${review.reply?.text ? `<span class="status">已回复</span><small class="review-reply-preview">${esc(review.reply.text)}</small>` : `<span class="status off">待回复</span>`}</td>
+      <td><button class="text-action" data-action="reply-review" data-id="${esc(review.id)}">${review.reply?.text ? "编辑回复" : "回复用户"}</button></td>
+    </tr>`).join("");
+    const actions = `<a class="admin-btn" href="admin-products.html">返回商品管理</a>`;
+    root.innerHTML = adminShell("reviews", `${pageHead("评论管理", "查看用户对商品的评价并回复，回复内容会同步展示在小程序商品详情。", actions)}
+      <div class="stats-row">
+        ${stat("评价总数", total.length, "包含小程序用户评价")}
+        ${stat("待回复", waiting, "及时回应用户问题")}
+        ${stat("已回复", replied, "回复同步至商品详情")}
+        ${stat("当前筛选", reviews.length, "可按商品、用户或订单搜索")}
+      </div>
+      <section class="panel">
+        <div class="panel-head"><span class="panel-title">用户评价列表</span><span class="panel-note">共 ${reviews.length} 条</span></div>
+        <div class="panel-body"><div class="filters">
+          <label class="admin-search">${icon("search")}<input id="review-search" type="search" value="${esc(reviewQuery)}" placeholder="搜索商品、用户、订单或评价"></label>
+          <select class="admin-select" id="review-filter"><option value="all" ${reviewFilter === "all" ? "selected" : ""}>全部回复状态</option><option value="unreplied" ${reviewFilter === "unreplied" ? "selected" : ""}>待回复</option><option value="replied" ${reviewFilter === "replied" ? "selected" : ""}>已回复</option></select>
+        </div></div>
+        <div class="table-wrap"><table class="admin-table review-admin-table"><thead><tr><th>商品</th><th>用户 / 订单</th><th>评分</th><th>评价内容</th><th>时间</th><th>运营回复</th><th>操作</th></tr></thead><tbody>${rows || `<tr><td colspan="7"><div class="admin-empty">暂无符合条件的评价</div></td></tr>`}</tbody></table></div>
+      </section>`);
+    root.querySelector("#review-search")?.addEventListener("input", event => { reviewQuery = event.target.value; renderReviews(); });
+    root.querySelector("#review-filter")?.addEventListener("change", event => { reviewFilter = event.target.value; renderReviews(); });
+  }
+
+  function replyReviewForm(reviewId) {
+    state = read();
+    const review = allReviews().find(item => item.id === reviewId);
+    if (!review) return toast("评价记录不存在");
+    const backdrop = openModal("回复用户评价", `<div class="review-reply-context"><strong>${esc(review.productName)} · ${esc(review.name || "商城用户")}</strong><p>${esc(review.text || "用户仅提交了评分")}</p></div>
+      <form id="review-reply-form"><label class="field">运营回复<textarea name="reply" rows="4" maxlength="500" required placeholder="礼貌、清晰地回应用户">${esc(review.reply?.text || "")}</textarea></label></form>`,
+      `<button type="button" class="secondary-btn" data-modal-close>取消</button><button type="button" class="primary-btn small" data-action="save-review-reply">保存回复</button>`);
+    backdrop.querySelector("[data-action='save-review-reply']")?.addEventListener("click", () => {
+      const form = backdrop.querySelector("#review-reply-form");
+      if (!form.reportValidity()) return;
+      try {
+        window.MallOps.replyReview(reviewId, new FormData(form).get("reply"));
+        state = read();
+        closeModal();
+        renderReviews();
+        toast("回复已保存并同步到小程序商品详情");
+      } catch (error) {
+        toast(error.message || "回复失败");
+      }
+    });
   }
 
   function productForm(product = null) {
@@ -388,7 +456,9 @@
     if (!control) return;
     const action = control.dataset.action;
     const id = control.dataset.id;
-    if (action === "remove-sku") {
+    if (action === "reply-review") {
+      replyReviewForm(id);
+    } else if (action === "remove-sku") {
       control.closest("[data-sku-row]")?.remove();
     } else if (action === "preview-product") {
       window.open(`mini-product.html?id=${encodeURIComponent(id)}`, "_blank");
@@ -446,13 +516,13 @@
   window.addEventListener("storage", event => {
     if (event.key !== window.MallData.KEY) return;
     state = read();
-    if (root.dataset.page === "products") renderProducts();
+    if (root.dataset.page === "products") view === "reviews" ? renderReviews() : renderProducts();
     else if (root.dataset.page === "membership") renderMembership();
     else if (root.dataset.page === "banners") renderBanners();
   });
 
   const page = root.dataset.page;
-  if (page === "products") renderProducts();
+  if (page === "products") view === "reviews" ? renderReviews() : renderProducts();
   else if (page === "membership") renderMembership();
   else if (page === "banners") renderBanners();
 })();

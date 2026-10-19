@@ -9,6 +9,7 @@
     to_ship: "待发货",
     to_receive: "待收货",
     completed: "已完成",
+    "pending-review": "待评价",
     cancelled: "已取消",
     refunded: "已退款",
     recoverable: "退款待追回"
@@ -21,6 +22,7 @@
       <header class="mini-head"><div class="mini-head-row"><a href="mini-profile.html" aria-label="返回" style="color:#666">${icon("chevron")}</a><span class="mini-title small">${title}</span><a href="index.html" class="head-link">总览</a></div></header>
       <main class="mini-main"><div class="mini-content">${content}</div></main>${tabbar("profile")}
     </div></div></div>`;
+    root.querySelector(".mini-head-row")?.insertAdjacentHTML("beforeend", window.MallUI.messageEntry());
   }
 
   function orderStatus(order) {
@@ -34,22 +36,26 @@
 
   function renderOrders() {
     state = read();
-    const filters = [["all", "全部"], ["pending_payment", "待付款"], ["to_ship", "待发货"], ["to_receive", "待收货"], ["completed", "已完成"], ["after-sale", "退款/售后"]];
-    const orders = state.orders.filter(order => filter === "all" || (filter === "after-sale" ? Boolean(order.afterSaleId) || order.status === "refunded" : order.status === filter));
+    const filters = [["all", "全部"], ["pending_payment", "待付款"], ["to_ship", "待发货"], ["to_receive", "待收货"], ["pending-review", "待评价"], ["completed", "已完成"], ["after-sale", "退款/售后"]];
+    const userOrders = state.orders.filter(order => order.userId === state.user.id);
+    const orders = userOrders.filter(order => filter === "all"
+      || (filter === "after-sale" ? Boolean(order.afterSaleId) || order.status === "refunded"
+        : filter === "pending-review" ? order.status === "completed" && order.items.some(item => !item.reviewId)
+          : order.status === filter));
     shell("我的订单", `<div class="toolbar-row">${filters.map(([value, label]) => `<button class="filter-chip ${filter === value ? "active" : ""}" data-action="filter" data-value="${value}">${label}</button>`).join("")}</div>
       ${orders.length ? orders.map(order => {
         const ticket = state.afterSales.find(item => item.id === order.afterSaleId);
-        const items = order.items.map(item => `<div class="cart-row" style="grid-template-columns:58px 1fr;padding:10px 0">
+        const items = order.items.map((item, itemIndex) => `<div class="order-item"><div class="cart-row" style="grid-template-columns:58px 1fr;padding:10px 0">
           <div class="cart-thumb" style="width:58px;height:58px"><img src="${item.image}" alt="${esc(item.name)}"></div>
           <div class="cart-info"><div class="cart-name">${esc(item.name)}</div><div class="cart-spec">${esc(item.skuLabel || item.skuSpecs?.map(spec => spec.value).join(" / ") || "")}</div><div class="cart-bottom"><span class="cart-spec">× ${item.qty}</span><strong class="price" style="font-size:12px">${money(item.price)}</strong></div></div>
-        </div>`).join("");
+        </div>${order.status === "completed" ? `<div class="order-review-row"><span>${item.reviewId ? "已评价" : "待评价"}</span>${item.reviewId ? `<button class="secondary-btn" disabled>已评价</button>` : `<button class="primary-btn small" data-action="review" data-id="${esc(order.id)}" data-index="${itemIndex}">去评价</button>`}</div>` : ""}</div>`).join("");
         const tracking = (order.tracking || []).slice(0, 2).map(item => `<div style="padding:4px 0;color:#888;font-size:9px">${esc(item.time)}　${esc(item.text)}</div>`).join("");
         const actions = order.status === "pending_payment"
           ? `<button class="secondary-btn" data-action="cancel" data-id="${esc(order.id)}">取消订单</button><button class="primary-btn small" data-action="pay" data-id="${esc(order.id)}">模拟支付</button>`
           : order.status === "to_receive"
             ? `<button class="secondary-btn" data-action="after-sale" data-id="${esc(order.id)}">申请售后</button><button class="secondary-btn" data-action="track" data-id="${esc(order.id)}">物流详情</button><button class="primary-btn small" data-action="receive" data-id="${esc(order.id)}">确认收货</button>`
             : ["to_ship", "completed"].includes(order.status)
-              ? `<button class="secondary-btn" data-action="after-sale" data-id="${esc(order.id)}">申请售后</button>${order.status === "to_ship" ? `<a class="secondary-btn" href="admin-orders.html">联系商家</a>` : ""}`
+              ? `<button class="secondary-btn" data-action="after-sale" data-id="${esc(order.id)}">申请售后</button>${order.status === "to_ship" ? `<a class="secondary-btn" href="mini-profile.html?view=chat">联系商家</a>` : ""}`
               : "";
         return `<article class="white-card section" style="padding:12px">
           <div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;color:#999"><span>订单号 ${esc(order.id)}</span><strong style="color:var(--orange)">${orderStatus(order)}</strong></div>
@@ -136,6 +142,26 @@
         window.MallOps.confirmReceived(id);
         toast("已确认收货，分销佣金完成结算");
         renderOrders();
+      } else if (action === "review") {
+        const itemIndex = Number(control.dataset.index);
+        const order = window.MallOps.findOrder(read(), id);
+        const item = order?.items?.[itemIndex];
+        if (!item) throw new Error("评价商品不存在");
+        const backdrop = openModal("评价商品", `<form id="review-form">
+          <div class="review-product-mini"><img src="${esc(item.image || "")}" alt=""><span><strong>${esc(item.name)}</strong><small>${esc(item.skuLabel || "")}</small></span></div>
+          <label class="field">商品评分<select name="rating" required><option value="5">★★★★★　非常满意</option><option value="4">★★★★　满意</option><option value="3">★★★　一般</option><option value="2">★★　不满意</option><option value="1">★　非常不满意</option></select></label>
+          <label class="field" style="margin-top:11px">评价内容<textarea name="text" rows="4" maxlength="500" placeholder="分享你的使用体验（选填，最多 500 字）"></textarea></label>
+          <input type="hidden" name="orderId" value="${esc(id)}"><input type="hidden" name="itemIndex" value="${itemIndex}">
+        </form>`, `<button class="secondary-btn" data-modal-close>取消</button><button class="primary-btn small" data-action="submit-review">提交评价</button>`);
+        backdrop.querySelector("[data-action='submit-review']").addEventListener("click", () => {
+          const formElement = backdrop.querySelector("#review-form");
+          if (!formElement.reportValidity()) return;
+          const form = new FormData(formElement);
+          window.MallOps.submitReview({ orderId: form.get("orderId"), itemIndex: Number(form.get("itemIndex")), rating: Number(form.get("rating")), text: form.get("text") });
+          closeModal();
+          toast("评价提交成功");
+          renderOrders();
+        });
       } else if (action === "track") {
         const order = window.MallOps.findOrder(read(), id);
         const lines = (order?.tracking || []).map(row => `<div class="list-link"><span>${esc(row.time)}　${esc(row.text)}</span><span>${esc(row.place || "")}</span></div>`).join("");

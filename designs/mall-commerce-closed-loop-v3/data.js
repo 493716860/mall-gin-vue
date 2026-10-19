@@ -5,6 +5,9 @@
 
   const defaults = {
     points: 2680,
+    chatMessages: [
+      { id: "CS-MSG-WELCOME", sender: "staff", type: "text", text: "您好，欢迎联系在线客服。有商品、订单或物流问题都可以留言。", createdAt: "2026-10-19 09:30", read: false }
+    ],
     products: [
       {
         id: "p01",
@@ -538,7 +541,13 @@
           reviewCount: Number(product.reviewCount || fallback?.reviewCount || 386),
           detailIntro: product.detailIntro || fallback?.detailIntro || "",
           detailImages: product.detailImages?.length ? product.detailImages : fallback?.detailImages || [],
-          reviews: product.reviews?.length ? product.reviews : fallback?.reviews || [],
+          reviews: (product.reviews?.length ? product.reviews : fallback?.reviews || []).map((review, reviewIndex) => ({
+            ...review,
+            id: review.id || `REV-${product.id}-${reviewIndex + 1}`,
+            rating: Number(review.rating || 5),
+            status: review.status || "visible",
+            reply: review.reply || null
+          })),
           price: Math.min(...(skus.filter(sku => sku.status === "on").length ? skus.filter(sku => sku.status === "on") : skus).map(sku => sku.price)),
           stock: skus.reduce((sum, sku) => sum + sku.stock, 0)
         };

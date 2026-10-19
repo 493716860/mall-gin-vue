@@ -86,6 +86,7 @@
       ${bottom}
       ${tabbar(active)}
     </div></div></div>`;
+    root.querySelector(".mini-head-row")?.insertAdjacentHTML("beforeend", window.MallUI.messageEntry());
   }
 
   function homeHeader() {
@@ -363,16 +364,142 @@
         <section class="white-card" style="padding:13px 9px 10px">
           <div class="section-head" style="padding:0 5px"><h2 style="font-size:13px">我的订单</h2><a href="mini-orders.html">全部订单 ${icon("chevron")}</a></div>
           <div class="profile-quick">
-            ${[["待付款","bag","pending_payment"],["待发货","box","to_ship"],["待收货","truck","to_receive"],["待评价","chat","completed"],["退款/售后","service","after-sale"]].map(([label, glyph, status]) => `<a href="mini-orders.html?status=${status}" class="order-shortcut">${icon(glyph)}<span>${label}</span></a>`).join("")}
+            ${[["待付款","bag","pending_payment"],["待发货","box","to_ship"],["待收货","truck","to_receive"],["待评价","chat","pending-review"],["退款/售后","service","after-sale"]].map(([label, glyph, status]) => `<a href="mini-orders.html?status=${status}" class="order-shortcut">${icon(glyph)}<span>${label}</span></a>`).join("")}
           </div>
         </section>
         <section class="section white-card" style="padding:2px 13px">
-          ${[["营销中心","gift","mini-promotions.html"],["我的优惠券","tag","mini-coupons.html"],["分销中心","chart","mini-distribution.html"],["收货地址","homeGoods","mini-addresses.html"],["积分","member","mini-points.html"],["客服","service","#service"],["设置","settings","#settings"]].map(([label, glyph, href]) => `<a href="${href}" ${href.startsWith("#") ? `data-action="profile-item" data-title="${label}"` : ""} class="list-link"><span style="display:flex;align-items:center;gap:9px">${icon(glyph)}<strong style="font-weight:550">${label}</strong></span><span>${icon("chevron")}</span></a>`).join("")}
+          ${[["营销中心","gift","mini-promotions.html"],["我的优惠券","tag","mini-coupons.html"],["分销中心","chart","mini-distribution.html"],["收货地址","homeGoods","mini-addresses.html"],["积分","member","mini-points.html"],["客服","service","mini-profile.html?view=chat"],["设置","settings","#settings"]].map(([label, glyph, href]) => `<a href="${href}" ${href.startsWith("#") ? `data-action="profile-item" data-title="${label}"` : ""} class="list-link"><span style="display:flex;align-items:center;gap:9px">${icon(glyph)}<strong style="font-weight:550">${label}</strong></span><span>${icon("chevron")}</span></a>`).join("")}
         </section>
         <div class="mini-notice">Mi Store · 认真生活，好好购物</div>
       </div>`
     });
   }
+
+  function chatTime() {
+    return new Date().toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  }
+
+  function renderChat() {
+    state = read();
+    state.chatMessages ||= [];
+    let changed = false;
+    state.chatMessages.forEach(message => {
+      if (message.sender === "staff" && !message.read) {
+        message.read = true;
+        changed = true;
+      }
+    });
+    if (changed) write(state);
+    const messages = state.chatMessages.map(message => {
+      const isStaff = message.sender === "staff";
+      const media = message.type === "image"
+        ? `<img class="chat-media-image" src="${esc(message.mediaData || "")}" alt="${esc(message.fileName || "客服图片")}">`
+        : message.type === "video"
+          ? `<video class="chat-media-video" controls preload="metadata" src="${esc(message.mediaData || "")}"></video>`
+          : "";
+      return `<article class="chat-message ${isStaff ? "staff" : "user"}">
+        <span class="chat-avatar">${isStaff ? "客" : "我"}</span><div class="chat-message-content">
+          <div class="chat-bubble">${message.text ? `<p>${esc(message.text)}</p>` : ""}${media ? `<div class="chat-attachment">${media}</div>` : ""}</div>
+          <time>${esc(message.createdAt || "")}</time>
+        </div>
+      </article>`;
+    }).join("");
+    miniShell({
+      active: "profile",
+      header: `<div class="mini-head-row"><a href="mini-profile.html" aria-label="返回" class="head-link">${icon("chevron")}</a><span class="mini-title">在线客服</span><span class="chat-head-note">本地演示会话</span></div>`,
+      content: `<div class="chat-page">
+        <div class="chat-service-note"><strong>商城在线客服</strong><span>留言后将收到模拟回复，正式接入可替换为微信客服接口。</span></div>
+        <div class="chat-stream" id="chat-stream">${messages || `<div class="chat-time-divider">开始咨询</div>`}</div>
+      </div>`,
+      bottom: `<div class="chat-composer">
+        <div class="chat-tools">
+          <label class="chat-tool">图片<input type="file" data-action="chat-image" accept="image/*"></label>
+          <label class="chat-tool">视频<input type="file" data-action="chat-video" accept="video/*"></label>
+          <span class="chat-upload-hint">单个 ≤ 1.5 MB · 会话合计 ≤ 2.5 MB</span>
+        </div>
+        <div class="chat-compose-row"><textarea id="chat-input" rows="1" maxlength="1000" placeholder="输入消息..."></textarea><button type="button" class="primary-btn small" data-action="chat-send">发送</button></div>
+      </div>`
+    });
+    const stream = root.querySelector("#chat-stream");
+    if (stream) stream.scrollTop = stream.scrollHeight;
+  }
+
+  function appendChatMessage(message) {
+    state = read();
+    state.chatMessages ||= [];
+    state.chatMessages.push({ id: `CS-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, createdAt: chatTime(), ...message });
+    try {
+      write(state);
+      return true;
+    } catch {
+      toast("本地存储空间不足，消息未能保存");
+      return false;
+    }
+  }
+
+  function scheduleChatReply() {
+    window.setTimeout(() => {
+      const chatIsOpen = new URLSearchParams(location.search).get("view") === "chat";
+      appendChatMessage({
+        sender: "staff",
+        type: "text",
+        text: "收到您的消息，我们已为您记录，客服将尽快跟进。",
+        read: chatIsOpen
+      });
+      if (chatIsOpen) renderChat();
+    }, 900);
+  }
+
+  function sendChatText() {
+    const input = root.querySelector("#chat-input");
+    const text = input?.value.trim();
+    if (!text) return toast("请输入消息内容");
+    if (!appendChatMessage({ sender: "user", type: "text", text, read: true })) return;
+    renderChat();
+    scheduleChatReply();
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("文件读取失败"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function sendChatMedia(input, type) {
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    if (!file.type.startsWith(`${type}/`)) return toast(`请选择有效的${type === "image" ? "图片" : "视频"}文件`);
+    if (file.size > 1_500_000) return toast("演示版单个附件不能超过 1.5 MB");
+    state = read();
+    const savedBytes = (state.chatMessages || []).reduce((sum, message) => sum + Number(message.mediaBytes || 0), 0);
+    if (savedBytes + file.size > 2_500_000) return toast("本地会话附件空间已满，请减少或清理附件");
+    try {
+      const mediaData = await readFileAsDataUrl(file);
+      if (!appendChatMessage({ sender: "user", type, text: "", mediaData, mediaBytes: file.size, fileName: file.name, read: true })) return;
+      renderChat();
+      scheduleChatReply();
+    } catch (error) {
+      toast(error.message || "附件发送失败");
+    }
+  }
+
+  root.addEventListener("click", event => {
+    if (event.target.closest('[data-action="chat-send"]')) sendChatText();
+  });
+  root.addEventListener("change", event => {
+    const input = event.target.closest('[data-action="chat-image"],[data-action="chat-video"]');
+    if (input) sendChatMedia(input, input.dataset.action === "chat-image" ? "image" : "video");
+  });
+  root.addEventListener("keydown", event => {
+    if (event.target.id === "chat-input" && event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendChatText();
+    }
+  });
 
   function addressReturnUrl() {
     const target = params.get("return");
@@ -422,6 +549,7 @@
 
   function openAddressForm(address = {}) {
     const backdrop = openModal(address.id ? "编辑收货地址" : "新增收货地址", `<form id="address-form">
+      <div class="address-locate-row"><button type="button" class="secondary-btn" data-action="address-locate">自动获取当前位置</button><span id="address-location-status">需授权定位；网络可用时会用 OpenStreetMap 解析地址</span></div>
       <div class="form-grid">
         <label class="field">收货人<input name="name" required maxlength="30" value="${esc(address.name || state.user.name || "")}"></label>
         <label class="field">联系电话<input name="phone" required maxlength="20" value="${esc(address.phone || state.user.phone || "")}"></label>
@@ -433,6 +561,36 @@
       <label class="address-default-choice"><input type="checkbox" name="isDefault" ${address.isDefault || !state.addresses.length ? "checked" : ""}> 设为默认收货地址</label>
       <input type="hidden" name="id" value="${esc(address.id || "")}">
     </form>`, `<button type="button" class="secondary-btn" data-modal-close>取消</button><button type="button" class="primary-btn small" data-action="address-save">保存</button>`);
+    backdrop.querySelector("[data-action='address-locate']")?.addEventListener("click", () => {
+      const status = backdrop.querySelector("#address-location-status");
+      const form = backdrop.querySelector("#address-form");
+      if (!navigator.geolocation) {
+        status.textContent = "当前浏览器不支持定位，请手动填写地址";
+        return;
+      }
+      status.textContent = "正在获取当前位置...";
+      navigator.geolocation.getCurrentPosition(async position => {
+        const { latitude, longitude } = position.coords;
+        status.textContent = `已获取坐标 ${latitude.toFixed(5)}, ${longitude.toFixed(5)}，正在解析地址...`;
+        try {
+          const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&accept-language=zh-CN`;
+          const response = await fetch(url);
+          if (!response.ok) throw new Error("地址解析服务暂不可用");
+          const result = await response.json();
+          const region = result.address || {};
+          form.elements.province.value = region.state || region.province || "";
+          form.elements.city.value = region.city || region.municipality || region.town || region.village || region.county || "";
+          form.elements.district.value = region.city_district || region.district || region.suburb || region.county || "";
+          form.elements.detail.value = [region.road, region.neighbourhood, region.house_number].filter(Boolean).join("");
+          status.textContent = result.address ? "已填入定位地址，请核对并补充门牌号" : "已获取坐标，未解析出地址，请手动补全";
+        } catch {
+          form.elements.detail.value = `当前位置坐标 ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+          status.textContent = "坐标已获取但地址解析失败，请手动补全省市区和门牌号";
+        }
+      }, error => {
+        status.textContent = error.code === 1 ? "定位权限未授权，请允许浏览器访问位置" : "定位失败，请检查系统定位权限或手动填写";
+      }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+    });
     backdrop.querySelector("[data-action='address-save']")?.addEventListener("click", () => {
       const form = backdrop.querySelector("#address-form");
       if (!form.reportValidity()) return;
@@ -530,7 +688,7 @@
     const ranked = [...state.products].filter(item => item.status === "on").sort((a, b) => Number(b.salesCount || 0) - Number(a.salesCount || 0));
     const rank = ranked.findIndex(item => item.id === product.id);
     const topProducts = ranked.slice(0, 10);
-    const reviews = product.reviews || [];
+    const reviews = (product.reviews || []).filter(review => review.status !== "hidden");
     const skuSpecs = sku => sku.specs?.length ? sku.specs : [{ name: "版本", value: "标准版" }];
     const selectedSpecs = Object.fromEntries(skuSpecs(currentSku).map(spec => [spec.name, spec.value]));
     const selectedAddress = state.selectedAddress || state.addresses?.find(item => item.isDefault) || state.addresses?.[0];
@@ -598,7 +756,7 @@
         <section class="detail-card detail-reviews" id="detail-reviews">
           <div class="detail-section-title"><h2>用户评价</h2><a href="#detail-reviews">好评率 98%　›</a></div>
           <div class="detail-rating"><strong>${Number(product.rating || 4.8).toFixed(1)}</strong><span>★★★★★</span><small>${Number(product.reviewCount || 0).toLocaleString()} 条评价</small></div>
-          ${reviews.slice(0, 3).map(review => `<article class="detail-review"><div class="detail-review-head"><strong>${esc(review.name || "商城用户")}</strong><span>${esc(review.date || "")}</span></div><div class="detail-stars">★★★★★</div><p>${esc(review.text || "")}</p>${review.images?.length ? `<div class="detail-review-images">${review.images.map(src => `<img src="${esc(src)}" alt="用户评价图片">`).join("")}</div>` : ""}</article>`).join("")}
+          ${reviews.slice(0, 3).map(review => `<article class="detail-review"><div class="detail-review-head"><strong>${esc(review.name || "商城用户")}</strong><span>${esc(review.date || "")}</span></div><div class="detail-stars">${"★".repeat(Math.max(1, Math.min(5, Number(review.rating || 5)))).padEnd(5, "☆")}</div><p>${esc(review.text || "用户已提交评分")}</p>${review.images?.length ? `<div class="detail-review-images">${review.images.map(src => `<img src="${esc(src)}" alt="用户评价图片">`).join("")}</div>` : ""}${review.reply?.text ? `<div class="detail-review-reply"><strong>${esc(review.reply.operator || "商家回复")}</strong><span>${esc(review.reply.text)}</span></div>` : ""}</article>`).join("")}
         </section>
         <section class="detail-description" id="detail-description">
           <div class="detail-description-title"><span></span><strong>商品详情</strong><span></span></div>
@@ -923,7 +1081,7 @@
     if (root.dataset.page === "home") renderHome();
     else if (root.dataset.page === "membership") renderMembership();
     else if (root.dataset.page === "cart") renderCart();
-    else if (root.dataset.page === "profile") renderProfile();
+    else if (root.dataset.page === "profile") params.get("view") === "chat" ? renderChat() : renderProfile();
     else if (root.dataset.page === "addresses") renderAddresses();
     else if (root.dataset.page === "points") renderPoints();
   });
@@ -933,7 +1091,7 @@
   if (page === "home") renderHome();
   else if (page === "membership") renderMembership();
   else if (page === "cart") renderCart();
-  else if (page === "profile") renderProfile();
+  else if (page === "profile") params.get("view") === "chat" ? renderChat() : renderProfile();
   else if (page === "addresses") renderAddresses();
   else if (page === "points") renderPoints();
   else if (page === "shop") renderShop();

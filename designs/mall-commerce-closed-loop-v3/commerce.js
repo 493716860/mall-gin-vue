@@ -484,6 +484,63 @@
     return order;
   }
 
+  function submitReview({ orderId, itemIndex, rating, text = "" }) {
+    const state = read();
+    const order = findOrder(state, orderId);
+    const index = Number(itemIndex);
+    const score = Number(rating);
+    if (!order || order.userId !== state.user.id || order.status !== "completed") {
+      throw new Error("仅可评价本人已完成的订单");
+    }
+    if (!Number.isInteger(index) || index < 0 || index >= order.items.length) throw new Error("评价商品不存在");
+    if (!Number.isInteger(score) || score < 1 || score > 5) throw new Error("请选择 1 至 5 星评分");
+    const item = order.items[index];
+    if (item.reviewId) throw new Error("该商品已评价");
+    const product = state.products.find(entry => entry.id === item.productId);
+    if (!product) throw new Error("商品信息不存在");
+    const content = String(text).trim();
+    if (content.length > 500) throw new Error("评价内容最多 500 字");
+    product.reviews ||= [];
+    const review = {
+      id: uid("REV"),
+      userId: state.user.id,
+      orderId: order.id,
+      orderItemIndex: index,
+      productId: product.id,
+      skuId: item.skuId || "",
+      skuLabel: item.skuLabel || "",
+      name: state.user.name || "商城用户",
+      date: nowText(),
+      createdAt: nowText(),
+      rating: score,
+      text: content,
+      images: [],
+      status: "visible",
+      reply: null
+    };
+    product.reviews.unshift(review);
+    item.reviewId = review.id;
+    item.reviewedAt = review.createdAt;
+    const previousCount = Number(product.reviewCount || 0);
+    const previousRating = Number(product.rating || 5);
+    product.reviewCount = previousCount + 1;
+    product.rating = cents((previousRating * previousCount + score) / product.reviewCount);
+    write(state);
+    return review;
+  }
+
+  function replyReview(reviewId, text, operator = "林运营") {
+    const state = read();
+    const product = state.products.find(entry => entry.reviews?.some(review => review.id === reviewId));
+    const review = product?.reviews.find(entry => entry.id === reviewId);
+    const content = String(text || "").trim();
+    if (!review) throw new Error("评价记录不存在");
+    if (!content || content.length > 500) throw new Error("回复内容需在 1 至 500 字之间");
+    review.reply = { text: content, operator, repliedAt: nowText() };
+    write(state);
+    return review;
+  }
+
   function applyAfterSale({ orderId, type = "refund", reason, description = "", amount }) {
     const state = read();
     const order = findOrder(state, orderId);
@@ -1358,6 +1415,8 @@
     cancelOrder,
     shipOrder,
     confirmReceived,
+    submitReview,
+    replyReview,
     applyAfterSale,
     reviewAfterSale,
     claimCoupon,

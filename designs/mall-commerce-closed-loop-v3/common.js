@@ -94,11 +94,40 @@
     ).join("")}</nav>`;
   }
 
+  function unreadMessageCount(state = window.MallData.read()) {
+    return (state.chatMessages || []).filter(message => message.sender === "staff" && !message.read).length;
+  }
+
+  function messageEntry() {
+    const unread = unreadMessageCount();
+    return `<a class="mini-message-entry" href="mini-profile.html?view=chat" aria-label="在线客服${unread ? `，${unread} 条未读消息` : ""}" title="在线客服">
+      ${icon("chat")}<span class="mini-message-badge" ${unread ? "" : "hidden"}>${unread > 99 ? "99+" : unread}</span>
+    </a>`;
+  }
+
+  function refreshMessageEntries() {
+    const unread = unreadMessageCount();
+    document.querySelectorAll(".mini-message-entry").forEach(entry => {
+      const badge = entry.querySelector(".mini-message-badge");
+      if (!badge) return;
+      badge.hidden = unread === 0;
+      badge.textContent = unread > 99 ? "99+" : String(unread);
+      entry.setAttribute("aria-label", `在线客服${unread ? `，${unread} 条未读消息` : ""}`);
+    });
+  }
+
+  window.addEventListener("mall:data-updated", refreshMessageEntries);
+  window.addEventListener("storage", event => {
+    if (event.key === window.MallData.KEY) refreshMessageEntries();
+  });
+  window.addEventListener("pageshow", refreshMessageEntries);
+
   function adminShell(active, content) {
     const nav = [
       ["overview", "经营总览", "chart", "admin-overview.html"],
       ["orders", "订单管理", "order", "admin-orders.html"],
       ["aftersales", "售后管理", "service", "admin-aftersales.html"],
+      ["reviews", "评论管理", "chat", "admin-products.html?view=reviews"],
       ["marketing", "营销中心", "gift", "admin-marketing.html"],
       ["distribution", "分销管理", "chart", "admin-distribution.html"],
       ["logistics", "快递 / 物流", "truck", "admin-logistics.html"],
@@ -128,5 +157,5 @@
     </div>`;
   }
 
-  window.MallUI = { icon, escapeHtml, money, toast, openModal, closeModal, tabbar, adminShell };
+  window.MallUI = { icon, escapeHtml, money, toast, openModal, closeModal, tabbar, messageEntry, adminShell };
 })();

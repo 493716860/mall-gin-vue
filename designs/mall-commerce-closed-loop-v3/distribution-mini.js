@@ -36,6 +36,7 @@
       <header class="mini-head"><div class="mini-head-row"><a href="mini-profile.html" aria-label="返回" style="color:#666">${window.MallUI.icon("chevron")}</a><span class="mini-title small">${title}</span><a href="index.html" class="head-link">总览</a></div></header>
       <main class="mini-main"><div class="mini-content dist-mini-content">${content}</div></main>${tabbar("profile")}
     </div></div></div>`;
+    root.querySelector(".mini-head-row")?.insertAdjacentHTML("beforeend", window.MallUI.messageEntry());
   }
 
   function tabs() {
