@@ -8,6 +8,15 @@
     return state.orders.find(order => order.id === id);
   }
 
+  function findSku(product, skuId = "") {
+    if (!product?.skus?.length) return null;
+    return skuId ? product.skus.find(item => item.id === skuId) || null : product.skus[0];
+  }
+
+  function syncProductStock(product) {
+    if (product?.skus?.length) product.stock = product.skus.reduce((sum, sku) => sum + Number(sku.stock || 0), 0);
+  }
+
   function currentTier(state) {
     const points = Number(state.user?.points ?? state.points ?? 0);
     return [...state.tiers].sort((a, b) => a.points - b.points).filter(tier => points >= tier.points).at(-1) || state.tiers[0];
@@ -217,19 +226,36 @@
       const product = state.products.find(item => item.id === line.productId);
       if (!product || product.status !== "on") throw new Error("所选商品暂不可购买");
       if (promo && product.id !== promo.productId) throw new Error("活动商品与所选商品不匹配");
+      const sku = findSku(product, line.skuId);
+      if (!sku || sku.status !== "on") throw new Error("所选商品规格已下架");
       const requestedQty = Number(line.qty || 1);
       if (!Number.isFinite(requestedQty) || requestedQty <= 0) throw new Error("商品数量无效");
       const qty = Math.max(1, Math.floor(requestedQty));
+      if (Number(sku.stock) < qty) throw new Error(`${product.name}（${sku.label}）库存不足`);
       return {
         productId: product.id,
+        spuId: product.spuId || product.id,
+        skuId: sku.id,
+        skuLabel: sku.label,
+        skuSpecs: (sku.specs || []).map(spec => ({ ...spec })),
         name: product.name,
-        image: product.image,
-        price: cents(promo ? (promoType === "flash" ? promo.price : promo.groupPrice) : product.price),
+        image: sku.image || product.gallery?.[0] || product.image,
+        price: cents(promo ? (promoType === "flash" ? promo.price : promo.groupPrice) : sku.price),
         qty,
         promoType
       };
     });
     if (!items.length) throw new Error("请先选择要购买的商品");
+    const requestedBySku = new Map();
+    items.forEach(item => {
+      const key = `${item.productId}:${item.skuId}`;
+      requestedBySku.set(key, { item, qty: Number(requestedBySku.get(key)?.qty || 0) + item.qty });
+    });
+    requestedBySku.forEach(({ item, qty }) => {
+      const product = state.products.find(entry => entry.id === item.productId);
+      const sku = findSku(product, item.skuId);
+      if (Number(sku?.stock) < qty) throw new Error(`${item.name}（${item.skuLabel}）库存不足`);
+    });
 
     const subtotal = cents(items.reduce((sum, item) => sum + item.price * item.qty, 0));
     const tier = currentTier(state);
@@ -297,10 +323,17 @@
     const state = read();
     const order = findOrder(state, orderId);
     if (!order || order.status !== "pending_payment") throw new Error("当前订单不可支付");
+    const requestedBySku = new Map();
     for (const item of order.items) {
       const product = state.products.find(entry => entry.id === item.productId);
-      if (!product || Number(product.stock) < item.qty) throw new Error(`${item.name} 库存不足`);
+      const sku = findSku(product, item.skuId);
+      if (!product || !sku) throw new Error(`${item.name} 所选规格不存在`);
+      const key = `${product.id}:${sku.id}`;
+      requestedBySku.set(key, { product, sku, qty: Number(requestedBySku.get(key)?.qty || 0) + Number(item.qty || 0), item });
     }
+    requestedBySku.forEach(({ sku, qty, item }) => {
+      if (Number(sku.stock) < qty) throw new Error(`${item.name}（${item.skuLabel || sku.label || "默认规格"}）库存不足`);
+    });
     if (order.promoType === "flash") {
       const sale = state.flashSales.find(item => item.id === order.promoId && item.status === "active");
       if (!sale || Number(sale.sold) + order.items[0].qty > Number(sale.quota)) throw new Error("秒杀库存不足");
@@ -308,7 +341,11 @@
     }
     order.items.forEach(item => {
       const product = state.products.find(entry => entry.id === item.productId);
-      product.stock = Number(product.stock) - item.qty;
+      const sku = findSku(product, item.skuId);
+      sku.stock = Number(sku.stock) - item.qty;
+      sku.salesCount = Number(sku.salesCount || 0) + item.qty;
+      syncProductStock(product);
+      product.salesCount = Number(product.salesCount || 0) + item.qty;
     });
     order.status = "to_ship";
     order.paidAt = nowText();

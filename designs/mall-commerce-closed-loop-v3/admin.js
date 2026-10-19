@@ -38,14 +38,15 @@
     const tbody = root.querySelector("#product-rows");
     if (!tbody) return;
     tbody.innerHTML = rows.length ? rows.map(product => `<tr>
-      <td><div class="product-cell"><img src="${product.image}" alt="${esc(product.name)}"><div><strong>${esc(product.name)}</strong><small>${esc(product.subtitle || "")}</small></div></div></td>
-      <td><strong style="color:#e96219">${money(product.price)}</strong><div style="margin-top:3px;color:#aaa;text-decoration:line-through;font-size:9px">${product.original ? money(product.original) : "—"}</div></td>
+      <td><div class="product-cell"><img src="${product.image}" alt="${esc(product.name)}"><div><strong>${esc(product.name)}</strong><small>${esc(product.subtitle || "")}</small><small class="product-spu-id">SPU ${esc(product.spuId || product.id)}</small></div></div></td>
+      <td><strong style="color:#e96219">${(product.skus || []).length > 1 ? `¥${Math.min(...product.skus.map(sku => Number(sku.price))).toFixed(2)} 起` : money(product.price)}</strong><div style="margin-top:3px;color:#aaa;text-decoration:line-through;font-size:9px">${product.original ? money(product.original) : "—"}</div></td>
       <td>${Number(product.stock).toLocaleString()}</td>
+      <td>${(product.skus || []).length} 个 SKU</td>
       <td>${esc(categoryName(product.parent, product.category))}</td>
       <td>${tagButtons(product)}</td>
       <td><span class="status ${product.status === "on" ? "" : "off"}">${product.status === "on" ? "销售中" : "已下架"}</span></td>
-      <td><div class="row-actions"><button class="text-action" data-action="edit-product" data-id="${esc(product.id)}">编辑</button><button class="text-action" data-action="toggle-status" data-id="${esc(product.id)}">${product.status === "on" ? "下架" : "上架"}</button></div></td>
-    </tr>`).join("") : `<tr><td colspan="7"><div class="admin-empty">没有符合条件的商品</div></td></tr>`;
+      <td><div class="row-actions"><button class="text-action" data-action="edit-product" data-id="${esc(product.id)}">编辑 SPU / SKU</button><button class="text-action" data-action="preview-product" data-id="${esc(product.id)}">预览详情</button><button class="text-action" data-action="toggle-status" data-id="${esc(product.id)}">${product.status === "on" ? "下架" : "上架"}</button></div></td>
+    </tr>`).join("") : `<tr><td colspan="8"><div class="admin-empty">没有符合条件的商品</div></td></tr>`;
     root.querySelector("#visible-count").textContent = `${rows.length} 件商品`;
   }
 
@@ -63,7 +64,7 @@
         ${stat("已配置分类", state.zones.length, "一级分类专区", "+2")}
       </div>
       <section class="panel">
-        <div class="panel-head"><span class="panel-title">商品列表</span><span class="panel-note" id="visible-count"></span></div>
+        <div class="panel-head"><span class="panel-title">SPU 商品列表</span><span class="panel-note" id="visible-count"></span></div>
         <div class="panel-body" style="padding-bottom:12px">
           <div class="filters">
             <label class="admin-search">${icon("search")}<input id="product-search" type="search" placeholder="搜索商品名称"></label>
@@ -72,8 +73,8 @@
             <span class="inline-help" style="margin-left:auto">点击标签即可切换首页推荐规则</span>
           </div>
         </div>
-        <div class="table-wrap"><table class="admin-table"><thead><tr><th>商品</th><th>售价</th><th>库存</th><th>分类</th><th>展示标签</th><th>状态</th><th>操作</th></tr></thead><tbody id="product-rows"></tbody></table></div>
-        <div class="pagination"><span>商品展示由后台数据实时驱动小程序</span><div class="page-numbers"><button class="page-num active">1</button><button class="page-num">2</button><button class="page-num">›</button></div></div>
+        <div class="table-wrap"><table class="admin-table"><thead><tr><th>SPU 商品</th><th>售价</th><th>总库存</th><th>SKU</th><th>分类</th><th>展示标签</th><th>状态</th><th>操作</th></tr></thead><tbody id="product-rows"></tbody></table></div>
+        <div class="pagination"><span>SPU 维护商品内容；SKU 独立维护规格、价格与库存</span><div class="page-numbers"><button class="page-num active">1</button><button class="page-num">2</button><button class="page-num">›</button></div></div>
       </section>`);
     renderProductRows();
     root.querySelector("#product-search").addEventListener("input", event => { productQuery = event.target.value; renderProductRows(); });
@@ -83,43 +84,136 @@
 
   function productForm(product = null) {
     const editing = Boolean(product);
-    const item = product || { id: "", name: "", subtitle: "", price: 0, original: 0, stock: 0, parent: state.zones[0]?.id || "digital", category: state.zones[0]?.subcats?.[0]?.id || "phones", tags: [], status: "on" };
+    const item = product || { id: "", spuId: "", name: "", subtitle: "", price: 0, original: 0, stock: 0, parent: state.zones[0]?.id || "digital", category: state.zones[0]?.subcats?.[0]?.id || "phones", tags: [], status: "on", skus: [{ specs: [{ name: "版本", value: "标准版" }], label: "版本=标准版", price: 0, originalPrice: 0, stock: 0, status: "on" }] };
     const parentOptions = state.zones.map(zone => `<option value="${esc(zone.id)}" ${item.parent === zone.id ? "selected" : ""}>${esc(zone.name)}</option>`).join("");
     const subcatOptions = state.zones.find(zone => zone.id === item.parent)?.subcats || [];
     const tagOptions = Object.entries(tagNames).map(([key, name]) => `<label style="display:flex;align-items:center;gap:5px"><input type="checkbox" name="tags" value="${key}" ${(item.tags || []).includes(key) ? "checked" : ""}>${name}</label>`).join("");
-    const backdrop = openModal(editing ? "编辑商品" : "新增商品", `<form id="product-form">
-      <div class="form-grid">
-        <label class="field" style="grid-column:1/-1">商品名称<input name="name" required value="${esc(item.name)}" placeholder="填写商品名称"></label>
-        <label class="field" style="grid-column:1/-1">商品副标题<input name="subtitle" value="${esc(item.subtitle || "")}" placeholder="规格或卖点"></label>
-        <label class="field">售价（元）<input name="price" type="number" min="0" step="0.01" required value="${Number(item.price)}"></label>
-        <label class="field">库存<input name="stock" type="number" min="0" required value="${Number(item.stock)}"></label>
-        <label class="field">一级分类<select name="parent">${parentOptions}</select></label>
-        <label class="field">二级分类<select name="category">${subcatOptions.map(option => `<option value="${esc(option.id)}" ${item.category === option.id ? "selected" : ""}>${esc(option.name)}</option>`).join("")}</select></label>
-        <label class="field">商品状态<select name="status"><option value="on" ${item.status === "on" ? "selected" : ""}>销售中</option><option value="off" ${item.status === "off" ? "selected" : ""}>已下架</option></select></label>
-        <div class="field">首页标签<div style="display:flex;gap:12px;padding:7px 0">${tagOptions}</div></div>
-      </div>
-      <input type="hidden" name="id" value="${esc(item.id)}">
-    </form>`, `<button type="button" class="secondary-btn" data-modal-close>取消</button><button type="submit" form="product-form" class="primary-btn small">保存商品</button>`);
+    const skuRows = (item.skus || []).map(sku => `<div class="sku-editor-row" data-sku-row>
+      <label class="field"><span>规格组合</span><input data-sku-specs required value="${esc(sku.label || sku.specs?.map(spec => `${spec.name}=${spec.value}`).join(" / ") || "版本=标准版")}" placeholder="颜色=曜石黑 / 容量=512GB"></label>
+      <label class="field"><span>SKU 编码</span><input data-sku-id value="${esc(sku.id || "")}" placeholder="保存时自动生成"></label>
+      <label class="field"><span>售价</span><input data-sku-price type="number" min="0" step="0.01" required value="${Number(sku.price || 0)}"></label>
+      <label class="field"><span>划线价</span><input data-sku-original type="number" min="0" step="0.01" value="${Number(sku.originalPrice ?? sku.price ?? 0)}"></label>
+      <label class="field"><span>库存</span><input data-sku-stock type="number" min="0" step="1" required value="${Number(sku.stock || 0)}"></label>
+      <label class="field"><span>SKU 状态</span><select data-sku-status><option value="on" ${sku.status !== "off" ? "selected" : ""}>可售</option><option value="off" ${sku.status === "off" ? "selected" : ""}>停售</option></select></label>
+      <button type="button" class="sku-remove" data-action="remove-sku" aria-label="删除此 SKU">删除</button>
+    </div>`).join("");
+    const backdrop = openModal(editing ? "编辑商品 · SPU / SKU" : "新增商品 · SPU / SKU", `<form id="product-form" class="product-editor-form">
+      <section class="product-editor-section"><div class="product-editor-heading"><span>01</span><div><strong>SPU 基础信息</strong><small>描述商品主体、分类和小程序列表呈现</small></div></div>
+        <div class="form-grid">
+          <label class="field">商品主标题<input name="name" required value="${esc(item.name)}" placeholder="例如：旗舰降噪耳机"></label>
+          <label class="field">SPU 编码<input name="id" value="${esc(item.spuId || item.id)}" ${editing ? "readonly" : ""} placeholder="留空自动生成"></label>
+          <label class="field" style="grid-column:1/-1">副标题 / 卖点<input name="subtitle" value="${esc(item.subtitle || "")}" placeholder="核心卖点、型号信息或服务承诺"></label>
+          <label class="field">一级分类<select name="parent">${parentOptions}</select></label>
+          <label class="field">二级分类<select name="category">${subcatOptions.map(option => `<option value="${esc(option.id)}" ${item.category === option.id ? "selected" : ""}>${esc(option.name)}</option>`).join("")}</select></label>
+          <label class="field">SPU 状态<select name="status"><option value="on" ${item.status === "on" ? "selected" : ""}>销售中</option><option value="off" ${item.status === "off" ? "selected" : ""}>已下架</option></select></label>
+          <div class="field">首页标签<div class="product-tag-options">${tagOptions}</div></div>
+        </div>
+      </section>
+      <section class="product-editor-section"><div class="product-editor-heading"><span>02</span><div><strong>SKU 规格与库存</strong><small>每个 SKU 独立售价、划线价、可售库存和状态</small></div></div>
+        <div class="sku-editor-head"><span>规格组合</span><span>SKU 编码</span><span>售价 / 划线价 / 库存</span><span>状态</span></div>
+        <div id="sku-editor-rows">${skuRows}</div>
+        <button type="button" class="sku-add-button" data-action="add-sku">＋ 添加 SKU 规格</button>
+      </section>
+      <section class="product-editor-section"><div class="product-editor-heading"><span>03</span><div><strong>商品主图与详情</strong><small>图片地址一行一张；详情介绍会与图片依次呈现</small></div></div>
+        <div class="form-grid">
+          <label class="field" style="grid-column:1/-1">多张主图（每行一个图片地址）<textarea name="gallery" rows="3" placeholder="留空将自动生成演示主图">${esc((item.gallery || [item.image]).filter(Boolean).join("\n"))}</textarea></label>
+          <label class="field" style="grid-column:1/-1">详情介绍<textarea name="detailIntro" rows="4" placeholder="材质、功能、使用场景、服务保障等商品介绍">${esc(item.detailIntro || "")}</textarea></label>
+          <label class="field" style="grid-column:1/-1">详情图片（每行一个图片地址）<textarea name="detailImages" rows="3" placeholder="留空将生成图文详情演示图">${esc((item.detailImages || []).join("\n"))}</textarea></label>
+        </div>
+      </section>
+      <input type="hidden" name="editingId" value="${esc(item.id)}">
+    </form>`, `<button type="button" class="secondary-btn" data-modal-close>取消</button><button type="submit" form="product-form" class="primary-btn small">保存 SPU 与 SKU</button>`);
+    backdrop.querySelector(".modal").classList.add("product-editor-modal");
     backdrop.querySelector('[name="parent"]').addEventListener("change", event => {
       const options = state.zones.find(zone => zone.id === event.target.value)?.subcats || [];
       backdrop.querySelector('[name="category"]').innerHTML = options.map(option => `<option value="${esc(option.id)}">${esc(option.name)}</option>`).join("");
+    });
+    backdrop.querySelector("[data-action='add-sku']").addEventListener("click", () => {
+      const container = backdrop.querySelector("#sku-editor-rows");
+      const row = document.createElement("div");
+      row.className = "sku-editor-row";
+      row.dataset.skuRow = "";
+      row.innerHTML = `<label class="field"><span>规格组合</span><input data-sku-specs required value="" placeholder="颜色=曜石黑 / 容量=512GB"></label>
+        <label class="field"><span>SKU 编码</span><input data-sku-id value="" placeholder="保存时自动生成"></label>
+        <label class="field"><span>售价</span><input data-sku-price type="number" min="0" step="0.01" required value="0"></label>
+        <label class="field"><span>划线价</span><input data-sku-original type="number" min="0" step="0.01" value="0"></label>
+        <label class="field"><span>库存</span><input data-sku-stock type="number" min="0" step="1" required value="0"></label>
+        <label class="field"><span>SKU 状态</span><select data-sku-status><option value="on">可售</option><option value="off">停售</option></select></label>
+        <button type="button" class="sku-remove" data-action="remove-sku" aria-label="删除此 SKU">删除</button>`;
+      container.appendChild(row);
+      row.querySelector("[data-sku-specs]").focus();
+    });
+    backdrop.addEventListener("click", event => {
+      const removeButton = event.target.closest("[data-action='remove-sku']");
+      if (removeButton) removeButton.closest("[data-sku-row]")?.remove();
     });
     backdrop.querySelector("#product-form").addEventListener("submit", event => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
       const parent = form.get("parent");
+      const name = String(form.get("name")).trim();
+      const spuId = String(form.get("id") || "").trim() || `SPU-${Date.now().toString().slice(-8)}`;
+      const parseLines = value => String(value || "").split("\n").map(line => line.trim()).filter(Boolean);
+      const galleryInput = parseLines(form.get("gallery"));
+      const gallery = galleryInput.length ? galleryInput : [
+        image(`Premium ecommerce product photography for ${name}, clean bright white studio background, no text`),
+        image(`Product detail view of ${name}, premium neutral studio photography, no text`),
+        image(`Close-up product material detail of ${name}, bright soft light, no text`)
+      ];
+      const skuRowsData = [...backdrop.querySelectorAll("[data-sku-row]")].map((row, index) => {
+        const specLabel = row.querySelector("[data-sku-specs]").value.trim();
+        const parts = specLabel.split(/[\/；;]+/).map(value => value.trim()).filter(Boolean).map(value => {
+          const [key, ...rest] = value.split(/[=:：]/);
+          return { name: (key || "规格").trim(), value: rest.join("=").trim() || key.trim() };
+        });
+        const skuPrice = Number(row.querySelector("[data-sku-price]").value);
+        const skuStock = Number(row.querySelector("[data-sku-stock]").value);
+        if (!specLabel || !Number.isFinite(skuPrice) || skuPrice < 0 || !Number.isInteger(skuStock) || skuStock < 0) throw new Error("请检查每个 SKU 的规格、售价和整数库存");
+        return {
+          id: row.querySelector("[data-sku-id]").value.trim() || `${spuId}-SKU-${String(index + 1).padStart(3, "0")}`,
+          spuId,
+          specs: parts,
+          label: specLabel.replace(/[=:：]/g, " ").replace(/[\/；;]/g, " / "),
+          price: skuPrice,
+          originalPrice: Number(row.querySelector("[data-sku-original]").value || skuPrice),
+          stock: skuStock,
+          image: gallery[0],
+          salesCount: Number(item.skus?.find(sku => sku.id === row.querySelector("[data-sku-id]").value.trim())?.salesCount || 0),
+          status: row.querySelector("[data-sku-status]").value
+        };
+      });
+      if (!skuRowsData.length) throw new Error("至少添加一个 SKU 规格");
+      const activeSkus = skuRowsData.filter(sku => sku.status === "on");
+      if (form.get("status") === "on" && !activeSkus.length) throw new Error("在售 SPU 至少需要一个可售 SKU");
+      const skuIds = skuRowsData.map(sku => sku.id);
+      const otherSkuIds = state.products.filter(entry => entry.id !== item.id).flatMap(entry => (entry.skus || []).map(sku => sku.id));
+      if (new Set(skuIds).size !== skuIds.length || skuIds.some(skuId => otherSkuIds.includes(skuId))) throw new Error("SKU 编码不能重复");
+      const detailImageInput = parseLines(form.get("detailImages"));
+      const detailImages = detailImageInput.length ? detailImageInput : [
+        image(`Long-form ecommerce detail image for ${name}, premium product in a calm modern home, no text`, "portrait_4_3"),
+        image(`Close-up product feature image for ${name}, bright clean commercial photography, no text`, "portrait_4_3")
+      ];
       const data = {
-        id: form.get("id") || `p${Date.now().toString().slice(-6)}`,
-        name: String(form.get("name")).trim(),
+        id: spuId,
+        spuId,
+        name,
         subtitle: String(form.get("subtitle") || "").trim(),
-        price: Number(form.get("price")),
-        original: editing ? item.original : Number(form.get("price")),
-        stock: Number(form.get("stock")),
+        price: Math.min(...(activeSkus.length ? activeSkus : skuRowsData).map(sku => sku.price)),
+        original: Math.min(...(activeSkus.length ? activeSkus : skuRowsData).map(sku => sku.originalPrice)),
+        stock: skuRowsData.reduce((sum, sku) => sum + sku.stock, 0),
+        skus: skuRowsData,
+        gallery,
+        salesCount: Number(item.salesCount || 0),
+        rating: Number(item.rating || 4.8),
+        reviewCount: Number(item.reviewCount || 0),
+        detailIntro: String(form.get("detailIntro") || "").trim() || `${name} ${String(form.get("subtitle") || "").trim()}。精选品质与实用设计，为日常使用带来可靠体验。`,
+        detailImages,
+        reviews: item.reviews || [],
         parent,
         category: form.get("category"),
         tags: form.getAll("tags"),
         status: form.get("status"),
-        image: editing ? item.image : image(`Premium ecommerce product photography for ${String(form.get("name")).trim()}, clean bright white studio background, no text`)
+        image: gallery[0]
       };
       const index = state.products.findIndex(entry => entry.id === data.id);
       if (index >= 0) state.products[index] = data;
@@ -294,7 +388,11 @@
     if (!control) return;
     const action = control.dataset.action;
     const id = control.dataset.id;
-    if (action === "toggle-tag") {
+    if (action === "remove-sku") {
+      control.closest("[data-sku-row]")?.remove();
+    } else if (action === "preview-product") {
+      window.open(`mini-product.html?id=${encodeURIComponent(id)}`, "_blank");
+    } else if (action === "toggle-tag") {
       const product = state.products.find(item => item.id === id);
       if (!product) return;
       product.tags ||= [];

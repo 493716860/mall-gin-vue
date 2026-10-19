@@ -41,7 +41,7 @@
         const ticket = state.afterSales.find(item => item.id === order.afterSaleId);
         const items = order.items.map(item => `<div class="cart-row" style="grid-template-columns:58px 1fr;padding:10px 0">
           <div class="cart-thumb" style="width:58px;height:58px"><img src="${item.image}" alt="${esc(item.name)}"></div>
-          <div class="cart-info"><div class="cart-name">${esc(item.name)}</div><div class="cart-bottom"><span class="cart-spec">× ${item.qty}</span><strong class="price" style="font-size:12px">${money(item.price)}</strong></div></div>
+          <div class="cart-info"><div class="cart-name">${esc(item.name)}</div><div class="cart-spec">${esc(item.skuLabel || item.skuSpecs?.map(spec => spec.value).join(" / ") || "")}</div><div class="cart-bottom"><span class="cart-spec">× ${item.qty}</span><strong class="price" style="font-size:12px">${money(item.price)}</strong></div></div>
         </div>`).join("");
         const tracking = (order.tracking || []).slice(0, 2).map(item => `<div style="padding:4px 0;color:#888;font-size:9px">${esc(item.time)}　${esc(item.text)}</div>`).join("");
         const actions = order.status === "pending_payment"

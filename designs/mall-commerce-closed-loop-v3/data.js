@@ -109,6 +109,32 @@
         tags: ["top", "new"],
         status: "on",
         image: image("Minimal white electric toothbrush with charging base, premium personal care product photography, soft white studio background, no text")
+      },
+      {
+        id: "p09",
+        name: "米家智能手表 S",
+        subtitle: "全天候健康监测｜长续航",
+        price: 699,
+        original: 799,
+        stock: 72,
+        parent: "digital",
+        category: "wearables",
+        tags: ["top", "recommend"],
+        status: "on",
+        image: image("Minimal dark graphite smartwatch with a clean round display and soft woven strap, premium ecommerce studio photography, pale warm background, no text")
+      },
+      {
+        id: "p10",
+        name: "轻薄平板 11",
+        subtitle: "高刷护眼屏｜学习办公两用",
+        price: 1899,
+        original: 2199,
+        stock: 58,
+        parent: "digital",
+        category: "tablets",
+        tags: ["top", "new"],
+        status: "on",
+        image: image("Slim silver tablet computer with a bright minimal screen and keyboard cover, premium ecommerce product photography, clean white studio, no text")
       }
     ],
     tiers: [
@@ -353,6 +379,62 @@
     settings: { commissionRate: 5, minimumWithdrawal: 100, freeShippingThreshold: 99 }
   };
 
+  const demoSales = [2680, 1940, 1510, 1280, 980, 860, 720, 640];
+  const reviewSamples = [
+    { name: "周*然", date: "2026-10-16", text: "做工和质感都很好，和页面介绍一致，物流也很快。", images: [] },
+    { name: "M*e", date: "2026-10-12", text: "包装完整，细节很用心，日常使用体验不错。", images: [] },
+    { name: "陈*宇", date: "2026-10-08", text: "已经用了一段时间，整体满意，会推荐给朋友。", images: [] }
+  ];
+  defaults.products = defaults.products.map((product, index) => {
+    const gallery = product.gallery?.length ? product.gallery : [
+      product.image,
+      image(`Premium ecommerce detail photography of ${product.name}, rear or side angle, clean pale warm-gray studio, soft natural shadow, no logo, no text`),
+      image(`Close-up material and craftsmanship detail of ${product.name}, premium commercial product photography, bright neutral background, no text`)
+    ];
+    const skuList = product.skus?.length ? product.skus : [{
+      id: `${product.id}-sku-001`,
+      spuId: product.spuId || product.id,
+      specs: [{ name: "版本", value: "标准版" }],
+      label: "标准版",
+      price: Number(product.price || 0),
+      originalPrice: Number(product.original || product.price || 0),
+      stock: Number(product.stock || 0),
+      image: gallery[0],
+      salesCount: demoSales[index] || 300,
+      barcode: "",
+      status: product.status || "on"
+    }];
+    return {
+      ...product,
+      spuId: product.spuId || product.id,
+      gallery,
+      skus: skuList.map((sku, skuIndex) => ({
+        ...sku,
+        id: sku.id || `${product.id}-sku-${String(skuIndex + 1).padStart(3, "0")}`,
+        spuId: product.spuId || product.id,
+        specs: sku.specs || [{ name: "版本", value: "标准版" }],
+        label: sku.label || (sku.specs || [{ value: "标准版" }]).map(spec => spec.value).join(" / "),
+        originalPrice: Number(sku.originalPrice ?? sku.original ?? sku.price ?? product.price ?? 0),
+        image: sku.image || gallery[0],
+        salesCount: Number(sku.salesCount ?? demoSales[index] ?? 300),
+        status: sku.status || product.status || "on"
+      })),
+      salesCount: Number(product.salesCount ?? demoSales[index] ?? 300),
+      rating: Number(product.rating || 4.8),
+      reviewCount: Number(product.reviewCount || 386 + index * 117),
+      detailIntro: product.detailIntro || `${product.name} ${product.subtitle || "为日常生活带来更好的使用体验。"}严选品质与实用设计，提供清晰的商品保障与售后服务。`,
+      detailImages: product.detailImages?.length ? product.detailImages : [
+        image(`Long-form ecommerce product detail image for ${product.name}, elegant product in a real modern home setting, premium Chinese retail visual merchandising, no text`, "portrait_4_3"),
+        image(`Product feature close-up for ${product.name}, realistic premium studio photography, bright clean background, no text`, "portrait_4_3")
+      ],
+      reviews: product.reviews?.length ? product.reviews : reviewSamples.map(review => ({ ...review }))
+    };
+  });
+
+  defaults.addresses = defaults.addresses || [
+    { id: "ADDR-001", name: "林女士", phone: "138****6218", province: "上海市", city: "上海市", district: "徐汇区", detail: "漕溪北路 88 号", isDefault: true }
+  ];
+
   function read() {
     try {
       const stored = localStorage.getItem(KEY);
@@ -361,7 +443,51 @@
         return JSON.parse(JSON.stringify(defaults));
       }
       const parsed = JSON.parse(stored);
-      return { ...JSON.parse(JSON.stringify(defaults)), ...parsed };
+      const state = { ...JSON.parse(JSON.stringify(defaults)), ...parsed };
+      state.products = (state.products || []).map((product, index) => {
+        const fallback = defaults.products.find(item => item.id === product.id) || defaults.products[index];
+        const gallery = product.gallery?.length ? product.gallery : fallback?.gallery || [product.image].filter(Boolean);
+        const rawSkus = product.skus?.length ? product.skus : [{
+          id: `${product.id}-sku-001`,
+          spuId: product.spuId || product.id,
+          specs: [{ name: "版本", value: "标准版" }],
+          label: "标准版",
+          price: Number(product.price || 0),
+          originalPrice: Number(product.original || product.price || 0),
+          stock: Number(product.stock || 0),
+          image: gallery[0],
+          salesCount: Number(product.salesCount || fallback?.salesCount || 300),
+          status: product.status || "on"
+        }];
+        const skus = rawSkus.map((sku, skuIndex) => ({
+          ...sku,
+          id: sku.id || `${product.id}-sku-${String(skuIndex + 1).padStart(3, "0")}`,
+          spuId: product.spuId || product.id,
+          specs: sku.specs || [{ name: "版本", value: "标准版" }],
+          label: sku.label || (sku.specs || [{ value: "标准版" }]).map(spec => spec.value).join(" / "),
+          price: Number(sku.price ?? product.price ?? 0),
+          originalPrice: Number(sku.originalPrice ?? sku.original ?? sku.price ?? product.price ?? 0),
+          stock: Number(sku.stock || 0),
+          image: sku.image || gallery[0],
+          salesCount: Number(sku.salesCount || fallback?.salesCount || 300),
+          status: sku.status || product.status || "on"
+        }));
+        return {
+          ...fallback,
+          ...product,
+          spuId: product.spuId || product.id,
+          gallery,
+          skus,
+          rating: Number(product.rating || fallback?.rating || 4.8),
+          reviewCount: Number(product.reviewCount || fallback?.reviewCount || 386),
+          detailIntro: product.detailIntro || fallback?.detailIntro || "",
+          detailImages: product.detailImages?.length ? product.detailImages : fallback?.detailImages || [],
+          reviews: product.reviews?.length ? product.reviews : fallback?.reviews || [],
+          price: Math.min(...(skus.filter(sku => sku.status === "on").length ? skus.filter(sku => sku.status === "on") : skus).map(sku => sku.price)),
+          stock: skus.reduce((sum, sku) => sum + sku.stock, 0)
+        };
+      });
+      return state;
     } catch {
       return JSON.parse(JSON.stringify(defaults));
     }

@@ -8,6 +8,9 @@
   let state = read();
   let activeZoneFilter = "all";
   let carouselTimer;
+  let detailGalleryIndex = 0;
+  let detailQty = 1;
+  let detailSkuId = params.get("sku") || "";
 
   function captureShareLanding() {
     const shareToken = params.get("share");
@@ -37,13 +40,14 @@
   }
 
   function productCard(product) {
+    const price = Math.min(...(product.skus || []).map(sku => Number(sku.price)).filter(Number.isFinite), Number(product.price || 0));
     return `<article class="product-card" data-action="detail" data-id="${esc(product.id)}">
       <div class="product-image"><img loading="lazy" src="${product.image}" alt="${esc(product.name)}"></div>
       <div class="product-copy">
         <div class="product-name">${esc(product.name)}</div>
         <div class="product-sub">${esc(product.subtitle || "")}</div>
         <div class="product-price-row">
-          <span class="price"><small>¥</small>${Number(product.price).toLocaleString("zh-CN")}</span>
+          <span class="price"><small>¥</small>${price.toLocaleString("zh-CN")}</span>
           ${product.original ? `<span class="old-price">¥${Number(product.original).toLocaleString("zh-CN")}</span>` : ""}
           ${productTags(product)}
           <button class="card-button" type="button" data-action="add-cart" data-id="${esc(product.id)}" aria-label="加入购物车">${icon("plus")}</button>
@@ -232,18 +236,22 @@
 
   function renderCart() {
     state = read();
-    const rows = state.cart.map(item => ({ item, product: productById(item.productId) })).filter(entry => entry.product);
+    const rows = state.cart.map(item => {
+      const product = productById(item.productId);
+      const sku = product?.skus?.find(row => row.id === item.skuId) || product?.skus?.[0];
+      return { item, product, sku };
+    }).filter(entry => entry.product && entry.sku);
     const selected = rows.filter(({ item }) => item.selected);
-    const total = selected.reduce((sum, { item, product }) => sum + Number(product.price) * item.qty, 0);
+    const total = selected.reduce((sum, { item, sku }) => sum + Number(sku.price) * item.qty, 0);
     const allSelected = rows.length > 0 && selected.length === rows.length;
     let edit = false;
-    const cartRows = rows.map(({ item, product }) => `<div class="cart-row">
-      <input class="check" type="checkbox" data-action="cart-select" data-id="${esc(product.id)}" ${item.selected ? "checked" : ""} aria-label="选择${esc(product.name)}">
-      <div class="cart-thumb"><img src="${product.image}" alt="${esc(product.name)}"></div>
-      <div class="cart-info"><div class="cart-name">${esc(product.name)}</div><div class="cart-spec">${esc(product.subtitle || "标准版")}</div>
-        <div class="cart-bottom"><strong class="price" style="font-size:13px">${money(product.price)}</strong>
-          <div style="display:flex;align-items:center;gap:7px"><button class="text-action danger cart-remove" data-action="cart-remove" data-id="${esc(product.id)}" style="display:none">删除</button>
-          <div class="stepper"><button type="button" data-action="cart-qty" data-id="${esc(product.id)}" data-delta="-1">−</button><output>${item.qty}</output><button type="button" data-action="cart-qty" data-id="${esc(product.id)}" data-delta="1">＋</button></div></div>
+    const cartRows = rows.map(({ item, product, sku }) => `<div class="cart-row">
+      <input class="check" type="checkbox" data-action="cart-select" data-id="${esc(product.id)}" data-sku-id="${esc(sku.id)}" ${item.selected ? "checked" : ""} aria-label="选择${esc(product.name)}">
+      <div class="cart-thumb"><img src="${sku.image || product.image}" alt="${esc(product.name)}"></div>
+      <div class="cart-info"><div class="cart-name">${esc(product.name)}</div><div class="cart-spec">${esc(sku.label || product.subtitle || "标准版")}</div>
+        <div class="cart-bottom"><strong class="price" style="font-size:13px">${money(sku.price)}</strong>
+          <div style="display:flex;align-items:center;gap:7px"><button type="button" class="text-action danger cart-remove" data-action="cart-remove" data-id="${esc(product.id)}" data-sku-id="${esc(sku.id)}" style="display:none">删除</button>
+          <div class="stepper"><button type="button" data-action="cart-qty" data-id="${esc(product.id)}" data-sku-id="${esc(sku.id)}" data-delta="-1">−</button><output>${item.qty}</output><button type="button" data-action="cart-qty" data-id="${esc(product.id)}" data-sku-id="${esc(sku.id)}" data-delta="1">＋</button></div></div>
         </div></div></div>`).join("");
     const empty = `<div class="empty-state"><div class="empty-illustration"></div><strong>购物车还是空的</strong><p>好物正在等你带回家</p><a class="primary-btn small" href="mini-shop.html">去逛逛</a></div>`;
     miniShell({
@@ -289,24 +297,148 @@
     });
   }
 
-  function addToCart(productId) {
+  function addToCart(productId, skuId = "", quantity = 1) {
     const product = productById(productId);
     if (!product) return;
-    const existing = state.cart.find(item => item.productId === productId);
-    if (existing) existing.qty += 1;
-    else state.cart.push({ productId, qty: 1, selected: true });
+    const sku = product.skus?.find(item => item.id === skuId) || product.skus?.[0];
+    if (!sku || sku.status !== "on") return toast("该商品规格暂不可购买");
+    const existing = state.cart.find(item => item.productId === productId && (item.skuId || product.skus?.[0]?.id) === sku.id);
+    const nextQty = Number(existing?.qty || 0) + Number(quantity || 1);
+    if (nextQty > Number(sku.stock || 0)) return toast(`库存不足，当前规格仅剩 ${Number(sku.stock || 0)} 件`);
+    if (existing) {
+      existing.skuId = sku.id;
+      existing.qty = nextQty;
+    } else state.cart.push({ productId, skuId: sku.id, qty: Number(quantity || 1), selected: true });
     write(state);
     toast("已加入购物车");
   }
 
   function showProduct(productId) {
-    const product = productById(productId);
-    if (!product) return;
-    openModal(esc(product.name), `<div style="display:grid;grid-template-columns:120px 1fr;gap:15px;align-items:center">
-      <img src="${product.image}" alt="${esc(product.name)}" style="width:120px;height:120px;object-fit:cover;border-radius:10px;background:#f3f3f3">
-      <div><div style="font-size:11px;color:#888;line-height:1.6">${esc(product.subtitle)}</div><div style="margin-top:10px;color:var(--orange);font-size:20px;font-weight:700">${money(product.price)}</div><div style="margin-top:8px">${productTags(product)}</div></div>
-    </div><div class="inline-help" style="margin-top:15px">商品、分类与「畅销」标记由运营后台维护；本原型不发起真实交易。</div>`,
-      `<button class="secondary-btn" type="button" data-modal-close>继续浏览</button><button class="primary-btn small" type="button" data-action="modal-add-cart" data-id="${esc(product.id)}">加入购物车</button>`);
+    location.href = `mini-product.html?id=${encodeURIComponent(productId)}`;
+  }
+
+  function renderProductDetail() {
+    state = read();
+    const product = productById(params.get("id"));
+    if (!product || product.status !== "on") {
+      miniShell({
+        pageTitle: "商品详情",
+        header: `<div class="mini-head-row"><a href="javascript:history.back()" aria-label="返回商城" style="color:#666">${icon("chevron")}</a><span class="mini-title small">商品详情</span><a href="mini-cart.html" style="color:#666">${icon("cart")}</a></div>`,
+        content: `<div class="empty-state"><strong>商品暂不可查看</strong><p>商品可能已下架或链接已失效</p><a class="primary-btn small" href="mini-shop.html">返回商城</a></div>`
+      });
+      return;
+    }
+    const skus = (product.skus || []).filter(sku => sku.status === "on");
+    const currentSku = skus.find(sku => sku.id === detailSkuId) || skus[0];
+    if (!currentSku) {
+      miniShell({ pageTitle: "商品详情", content: `<div class="empty-state"><strong>暂时无可售规格</strong><a class="primary-btn small" href="mini-shop.html">返回商城</a></div>` });
+      return;
+    }
+    detailSkuId = currentSku.id;
+    detailQty = Math.min(Math.max(1, detailQty), Math.max(1, Number(currentSku.stock || 0)));
+    const gallery = product.gallery?.length ? product.gallery : [product.image];
+    detailGalleryIndex = Math.min(detailGalleryIndex, gallery.length - 1);
+    const galleryImg = gallery[detailGalleryIndex] || product.image;
+    const ranked = [...state.products].filter(item => item.status === "on").sort((a, b) => Number(b.salesCount || 0) - Number(a.salesCount || 0));
+    const rank = ranked.findIndex(item => item.id === product.id);
+    const topProducts = ranked.slice(0, 10);
+    const reviews = product.reviews || [];
+    const selectedAddress = state.selectedAddress || state.addresses?.find(item => item.isDefault) || state.addresses?.[0];
+    const addressLine = selectedAddress
+      ? `${selectedAddress.province || ""}${selectedAddress.city || ""}${selectedAddress.district || ""}${selectedAddress.detail || ""}`
+      : "请选择收货地址";
+    const galleryThumbs = gallery.map((src, index) => `<button class="detail-thumb ${index === detailGalleryIndex ? "active" : ""}" type="button" data-action="gallery-image" data-index="${index}" aria-label="查看第 ${index + 1} 张商品图片"><img src="${esc(src)}" alt=""></button>`).join("");
+    const skuButtons = skus.map(sku => `<button type="button" class="detail-sku ${sku.id === currentSku.id ? "active" : ""}" data-action="select-sku" data-sku-id="${esc(sku.id)}" ${Number(sku.stock) <= 0 ? "disabled" : ""}>${esc(sku.label || sku.specs?.map(spec => spec.value).join(" / ") || "标准版")}${Number(sku.stock) <= 0 ? " · 售罄" : ""}</button>`).join("");
+    const recommendations = [...state.products].filter(item => item.id !== product.id && item.status === "on" && (item.parent === product.parent || item.tags?.includes("recommend"))).slice(0, 4);
+    const rankCopy = rank >= 0 && rank < 10 ? `销量榜 TOP ${rank + 1}` : "品质精选";
+    miniShell({
+      pageTitle: "商品详情",
+      header: `<div class="mini-head-row"><a href="javascript:history.back()" aria-label="返回商城" style="color:#666">${icon("chevron")}</a><span class="mini-title small">商品详情</span><a href="mini-cart.html" aria-label="购物车" style="color:#666">${icon("cart")}</a></div>`,
+      content: `<div class="product-detail">
+        <section class="detail-gallery" aria-label="商品主图">
+          <img class="detail-main-image" src="${esc(galleryImg)}" alt="${esc(product.name)}">
+          <span class="detail-image-count">${detailGalleryIndex + 1} / ${gallery.length}</span>
+          <div class="detail-thumbs">${galleryThumbs}</div>
+        </section>
+        <section class="detail-price-block">
+          <div class="detail-price-line"><strong>${money(currentSku.price)}</strong>${Number(currentSku.originalPrice || product.original) > Number(currentSku.price) ? `<del>${money(currentSku.originalPrice || product.original)}</del>` : ""}<span class="detail-rank">${esc(rankCopy)}</span></div>
+          <div class="detail-sales-line"><span>已售 ${Number(product.salesCount || 0).toLocaleString()} 件</span><span>剩余库存 ${Number(currentSku.stock || 0)} 件</span><span>${Number(product.rating || 4.8).toFixed(1)} 分</span></div>
+        </section>
+        <section class="detail-title-block"><div class="detail-tags">${productTags(product)}</div><h1>${esc(product.name)}</h1><p>${esc(product.subtitle || "")}</p><span class="detail-spu-id">SPU ${esc(product.spuId || product.id)}</span></section>
+        <section class="detail-card">
+          <div class="detail-row-head"><strong>选择规格</strong><span>${esc(currentSku.label || "标准版")}</span></div>
+          <div class="detail-sku-list">${skuButtons}</div>
+          <div class="detail-row-head detail-quantity"><strong>购买数量</strong><div class="stepper"><button type="button" data-action="detail-qty" data-delta="-1" aria-label="减少数量">−</button><output>${detailQty}</output><button type="button" data-action="detail-qty" data-delta="1" aria-label="增加数量">＋</button></div></div>
+        </section>
+        <button class="detail-card detail-address" type="button" data-action="choose-address">
+          <span class="detail-address-icon">${icon("homeGoods")}</span><span><strong>配送至</strong><small>${esc(addressLine)}　${selectedAddress ? `${esc(selectedAddress.name || "")} ${esc(selectedAddress.phone || "")}` : ""}</small></span>${icon("chevron")}
+        </button>
+        <section class="detail-service"><span>✓ 正品保障</span><span>✓ 7 天退换</span><span>✓ 快速配送</span></section>
+        <nav class="detail-anchor-nav"><a href="#detail-top10">销量榜</a><a href="#detail-reviews">评价 ${Number(product.reviewCount || 0).toLocaleString()}</a><a href="#detail-description">商品详情</a><a href="#detail-related">推荐商品</a></nav>
+        <section class="detail-top10" id="detail-top10">
+          <div class="detail-section-title"><h2>热销商品 TOP 10</h2><span>共 ${topProducts.length} 款在售</span></div>
+          <ol class="detail-top10-list">${topProducts.map((item, index) => {
+            const itemPrice = Math.min(...(item.skus || []).filter(sku => sku.status === "on").map(sku => Number(sku.price)).filter(Number.isFinite), Number(item.price || 0));
+            return `<li class="detail-top10-item ${item.id === product.id ? "current" : ""}">
+              <button type="button" class="detail-top10-link" data-action="detail" data-id="${esc(item.id)}">
+                <span class="detail-top10-rank rank-${index + 1}">${String(index + 1).padStart(2, "0")}</span>
+                <img src="${esc(item.image)}" alt="">
+                <span class="detail-top10-copy"><strong>${esc(item.name)}</strong><small>已售 ${Number(item.salesCount || 0).toLocaleString()} 件</small></span>
+                <span class="detail-top10-price">${money(itemPrice)}</span>
+                ${item.id === product.id ? `<span class="detail-top10-current">当前</span>` : ""}
+              </button>
+            </li>`;
+          }).join("")}</ol>
+          <p class="detail-top10-note">销量数据为本地原型演示数据，正式环境应由订单数据实时汇总。</p>
+        </section>
+        <section class="detail-card detail-reviews" id="detail-reviews">
+          <div class="detail-section-title"><h2>用户评价</h2><a href="#detail-reviews">好评率 98%　›</a></div>
+          <div class="detail-rating"><strong>${Number(product.rating || 4.8).toFixed(1)}</strong><span>★★★★★</span><small>${Number(product.reviewCount || 0).toLocaleString()} 条评价</small></div>
+          ${reviews.slice(0, 3).map(review => `<article class="detail-review"><div class="detail-review-head"><strong>${esc(review.name || "商城用户")}</strong><span>${esc(review.date || "")}</span></div><div class="detail-stars">★★★★★</div><p>${esc(review.text || "")}</p>${review.images?.length ? `<div class="detail-review-images">${review.images.map(src => `<img src="${esc(src)}" alt="用户评价图片">`).join("")}</div>` : ""}</article>`).join("")}
+        </section>
+        <section class="detail-description" id="detail-description">
+          <div class="detail-description-title"><span></span><strong>商品详情</strong><span></span></div>
+          <p>${esc(product.detailIntro || product.subtitle || product.name)}</p>
+          ${(product.detailImages || []).map((src, index) => `<img loading="lazy" src="${esc(src)}" alt="${esc(product.name)} 商品详情图 ${index + 1}">`).join("")}
+          <div class="detail-description-foot">产品参数与服务说明以实际商品包装及售后政策为准</div>
+        </section>
+        <section class="detail-related" id="detail-related"><div class="detail-section-title"><h2>为你推荐</h2><span>更多好物</span></div><div class="detail-related-grid">${recommendations.map(item => `<button type="button" class="detail-related-card" data-action="detail" data-id="${esc(item.id)}"><img src="${esc(item.image)}" alt="${esc(item.name)}"><strong>${esc(item.name)}</strong><span>${money(Math.min(...(item.skus || []).map(sku => Number(sku.price)).filter(Number.isFinite), Number(item.price || 0)))}</span></button>`).join("")}</div></section>
+      </div>`,
+      bottom: `<div class="detail-buybar"><a href="mini-cart.html" class="detail-cart-link">${icon("cart")}<span>购物车</span></a><button type="button" class="detail-add-btn" data-action="detail-add" ${Number(currentSku.stock) <= 0 ? "disabled" : ""}>加入购物车</button><button type="button" class="detail-buy-btn" data-action="detail-buy" ${Number(currentSku.stock) <= 0 ? "disabled" : ""}>立即购买</button></div>`
+    });
+    const galleryBox = root.querySelector(".detail-gallery");
+    let startX = 0;
+    galleryBox?.addEventListener("touchstart", event => { startX = event.touches[0].clientX; }, { passive: true });
+    galleryBox?.addEventListener("touchend", event => {
+      const delta = event.changedTouches[0].clientX - startX;
+      if (Math.abs(delta) > 28) {
+        detailGalleryIndex = (detailGalleryIndex + (delta < 0 ? 1 : gallery.length - 1)) % gallery.length;
+        renderProductDetail();
+      }
+    }, { passive: true });
+  }
+
+  function chooseDeliveryAddress() {
+    const addresses = state.addresses || [];
+    const current = state.selectedAddress || addresses.find(item => item.isDefault) || addresses[0] || {};
+    const backdrop = openModal("配送地址", `<form id="detail-address-form"><div class="form-grid">
+      <label class="field" style="grid-column:1/-1">收货人<input name="name" required value="${esc(current.name || state.user.name || "")}"></label>
+      <label class="field" style="grid-column:1/-1">联系电话<input name="phone" required value="${esc(current.phone || state.user.phone || "")}"></label>
+      <label class="field" style="grid-column:1/-1">详细地址<input name="detail" required value="${esc([current.province, current.city, current.district, current.detail].filter(Boolean).join(""))}" placeholder="省市区、街道门牌号"></label>
+    </div><p class="inline-help" style="margin-top:12px">此原型仅保存本地演示地址，不会提交到真实物流服务。</p></form>`, `<button type="button" class="secondary-btn" data-modal-close>取消</button><button type="button" class="primary-btn small" data-action="save-detail-address">保存地址</button>`);
+    backdrop.querySelector("[data-action='save-detail-address']").addEventListener("click", () => {
+      const form = backdrop.querySelector("#detail-address-form");
+      if (!form.reportValidity()) return;
+      const values = new FormData(form);
+      const address = { id: current.id || `ADDR-${Date.now()}`, name: String(values.get("name")).trim(), phone: String(values.get("phone")).trim(), detail: String(values.get("detail")).trim(), isDefault: true };
+      state.addresses = (state.addresses || []).map(item => ({ ...item, isDefault: false }));
+      if (!state.addresses.some(item => item.id === address.id)) state.addresses.unshift(address);
+      else state.addresses = state.addresses.map(item => item.id === address.id ? address : item);
+      state.selectedAddress = address;
+      write(state);
+      closeModal();
+      renderProductDetail();
+    });
   }
 
   root.addEventListener("click", event => {
@@ -316,12 +448,42 @@
     if (action === "add-cart") {
       event.preventDefault();
       event.stopPropagation();
-      addToCart(control.dataset.id);
-    } else if (action === "detail" && !event.target.closest("button")) {
+      addToCart(control.dataset.id, control.dataset.skuId || "");
+    } else if (action === "detail") {
       showProduct(control.dataset.id);
     } else if (action === "modal-add-cart") {
-      addToCart(control.dataset.id);
+      addToCart(control.dataset.id, control.dataset.skuId || "");
       closeModal();
+    } else if (action === "gallery-image") {
+      detailGalleryIndex = Number(control.dataset.index || 0);
+      renderProductDetail();
+    } else if (action === "select-sku") {
+      detailSkuId = control.dataset.skuId;
+      detailQty = 1;
+      renderProductDetail();
+    } else if (action === "detail-qty") {
+      const product = productById(params.get("id"));
+      const sku = product?.skus?.find(item => item.id === detailSkuId);
+      detailQty = Math.min(Number(sku?.stock || 1), Math.max(1, detailQty + Number(control.dataset.delta)));
+      renderProductDetail();
+    } else if (action === "choose-address") {
+      chooseDeliveryAddress();
+    } else if (action === "detail-add") {
+      addToCart(params.get("id"), detailSkuId, detailQty);
+    } else if (action === "detail-buy") {
+      try {
+        const address = state.selectedAddress || state.addresses?.find(item => item.isDefault) || state.addresses?.[0];
+        if (!address) return chooseDeliveryAddress();
+        const order = window.MallOps.createOrder({
+          lines: [{ productId: params.get("id"), skuId: detailSkuId, qty: detailQty }],
+          address: { name: address.name, phone: address.phone, text: [address.province, address.city, address.district, address.detail].filter(Boolean).join("") },
+          shareTokenId: sessionStorage.getItem("mall-pending-share-token") || params.get("share") || ""
+        });
+        sessionStorage.removeItem("mall-pending-share-token");
+        location.href = `mini-orders.html?status=pending_payment&order=${encodeURIComponent(order.id)}`;
+      } catch (error) {
+        toast(error.message || "暂时无法提交订单");
+      }
     } else if (action === "shop-filter") {
       params.set("category", control.dataset.category);
       params.delete("q");
@@ -330,17 +492,22 @@
       activeZoneFilter = control.dataset.category;
       renderZone();
     } else if (action === "cart-qty") {
-      const row = state.cart.find(item => item.productId === control.dataset.id);
-      if (row) row.qty = Math.max(1, row.qty + Number(control.dataset.delta));
+      const row = state.cart.find(item => item.productId === control.dataset.id && (item.skuId || productById(item.productId)?.skus?.[0]?.id) === control.dataset.skuId);
+      if (row) {
+        const sku = productById(row.productId)?.skus?.find(item => item.id === control.dataset.skuId);
+        const nextQty = Math.max(1, row.qty + Number(control.dataset.delta));
+        if (nextQty > Number(sku?.stock || 0)) return toast(`库存不足，当前规格仅剩 ${Number(sku?.stock || 0)} 件`);
+        row.qty = nextQty;
+      }
       write(state);
       renderCart();
     } else if (action === "cart-remove") {
-      state.cart = state.cart.filter(item => item.productId !== control.dataset.id);
+      state.cart = state.cart.filter(item => !(item.productId === control.dataset.id && (item.skuId || productById(item.productId)?.skus?.[0]?.id) === control.dataset.skuId));
       write(state);
       renderCart();
       toast("已从购物车移除");
     } else if (action === "cart-select") {
-      const row = state.cart.find(item => item.productId === control.dataset.id);
+      const row = state.cart.find(item => item.productId === control.dataset.id && (item.skuId || productById(item.productId)?.skus?.[0]?.id) === control.dataset.skuId);
       if (row) row.selected = control.checked;
       write(state);
       renderCart();
@@ -396,7 +563,7 @@
         const addressText = document.getElementById("checkout-address")?.value.trim();
         if (!addressText) throw new Error("请填写收货地址");
         const order = window.MallOps.createOrder({
-          lines: selected.map(item => ({ productId: item.productId, qty: item.qty })),
+          lines: selected.map(item => ({ productId: item.productId, skuId: item.skuId || productById(item.productId)?.skus?.[0]?.id, qty: item.qty })),
           address: { name: state.user.name, phone: state.user.phone, text: addressText },
           couponId: document.getElementById("checkout-coupon")?.value || "",
           remark: document.getElementById("checkout-remark")?.value.trim() || "",
@@ -404,7 +571,7 @@
         });
         sessionStorage.removeItem("mall-pending-share-token");
         state = read();
-        state.cart = state.cart.filter(item => !selected.some(row => row.productId === item.productId));
+        state.cart = state.cart.filter(item => !selected.some(row => row.productId === item.productId && (row.skuId || productById(row.productId)?.skus?.[0]?.id) === (item.skuId || productById(item.productId)?.skus?.[0]?.id)));
         write(state);
         closeModal();
         location.href = `mini-orders.html?status=pending_payment&order=${encodeURIComponent(order.id)}`;
@@ -431,4 +598,5 @@
   else if (page === "profile") renderProfile();
   else if (page === "shop") renderShop();
   else if (page === "zone") renderZone();
+  else if (page === "product-detail") renderProductDetail();
 })();
