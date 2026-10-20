@@ -910,6 +910,24 @@
     return "mini-profile.html";
   }
 
+  function addressListUrl(saved = false) {
+    const query = new URLSearchParams();
+    ["return", "id", "sku"].forEach(key => {
+      if (params.has(key)) query.set(key, params.get(key));
+    });
+    if (saved) query.set("saved", "1");
+    return `mini-addresses.html${query.size ? `?${query}` : ""}`;
+  }
+
+  function addressFormUrl(address = {}) {
+    const query = new URLSearchParams();
+    ["return", "id", "sku"].forEach(key => {
+      if (params.has(key)) query.set(key, params.get(key));
+    });
+    if (address.id) query.set("edit", address.id);
+    return `mini-address-form.html${query.size ? `?${query}` : ""}`;
+  }
+
   function renderAddresses() {
     state = read();
     state.addresses = state.addresses || [];
@@ -942,77 +960,100 @@
         <p class="mini-notice">地址仅保存在当前浏览器，用于本原型的本地配送演示。</p>
       </div>`
     });
+    if (params.get("saved") === "1") {
+      toast("地址已保存");
+      params.delete("saved");
+      history.replaceState(null, "", `${location.pathname}${params.size ? `?${params}` : ""}`);
+    }
   }
 
   function openAddressForm(address = {}) {
-    const backdrop = openModal(address.id ? "编辑收货地址" : "新增收货地址", `<form id="address-form">
-      <div class="address-locate-row"><button type="button" class="secondary-btn" data-action="address-locate">自动获取当前位置</button><span id="address-location-status">需授权定位；网络可用时会用 OpenStreetMap 解析地址</span></div>
-      <div class="form-grid">
-        <label class="field">收货人<input name="name" required maxlength="30" value="${esc(address.name || state.user.name || "")}"></label>
-        <label class="field">联系电话<input name="phone" required maxlength="20" value="${esc(address.phone || state.user.phone || "")}"></label>
-        <label class="field">省份<input name="province" required value="${esc(address.province || "")}" placeholder="例如：上海市"></label>
-        <label class="field">城市<input name="city" required value="${esc(address.city || "")}" placeholder="例如：上海市"></label>
-        <label class="field">区县<input name="district" required value="${esc(address.district || "")}" placeholder="例如：徐汇区"></label>
-        <label class="field" style="grid-column:1/-1">详细地址<input name="detail" required value="${esc(address.detail || "")}" placeholder="街道、门牌号等"></label>
-      </div>
-      <label class="address-default-choice"><input type="checkbox" name="isDefault" ${address.isDefault || !state.addresses.length ? "checked" : ""}> 设为默认收货地址</label>
-      <input type="hidden" name="id" value="${esc(address.id || "")}">
-    </form>`, `<button type="button" class="secondary-btn" data-modal-close>取消</button><button type="button" class="primary-btn small" data-action="address-save">保存</button>`);
-    backdrop.querySelector("[data-action='address-locate']")?.addEventListener("click", () => {
-      const status = backdrop.querySelector("#address-location-status");
-      const form = backdrop.querySelector("#address-form");
-      if (!navigator.geolocation) {
-        status.textContent = "当前浏览器不支持定位，请手动填写地址";
-        return;
+    location.href = addressFormUrl(address);
+  }
+
+  function renderAddressForm() {
+    state = read();
+    state.addresses ||= [];
+    const address = state.addresses.find(item => item.id === params.get("edit")) || {};
+    const title = address.id ? "编辑收货地址" : "新增收货地址";
+    miniShell({
+      active: "profile",
+      header: `<div class="mini-head-row"><a class="head-link" href="${esc(addressListUrl())}" aria-label="返回">${icon("chevron")}</a><span class="mini-title">${title}</span><span></span></div>`,
+      content: `<div class="mini-content address-form-page">
+        <div class="address-page-intro"><strong>${title}</strong><span>用于商品配送与订单结算</span></div>
+        <form id="address-form" class="address-form-card">
+          <div class="address-locate-row"><button type="button" class="secondary-btn" data-action="address-locate">自动获取当前位置</button><span id="address-location-status">需授权定位；网络可用时会用 OpenStreetMap 解析地址</span></div>
+          <div class="form-grid">
+            <label class="field">收货人<input name="name" required maxlength="30" value="${esc(address.name || state.user.name || "")}"></label>
+            <label class="field">联系电话<input name="phone" required maxlength="20" value="${esc(address.phone || state.user.phone || "")}"></label>
+            <label class="field">省份<input name="province" required value="${esc(address.province || "")}" placeholder="例如：上海市"></label>
+            <label class="field">城市<input name="city" required value="${esc(address.city || "")}" placeholder="例如：上海市"></label>
+            <label class="field">区县<input name="district" required value="${esc(address.district || "")}" placeholder="例如：徐汇区"></label>
+            <label class="field address-detail-field">详细地址<input name="detail" required value="${esc(address.detail || "")}" placeholder="街道、门牌号等"></label>
+          </div>
+          <label class="address-default-choice"><input type="checkbox" name="isDefault" ${address.isDefault || !state.addresses.length ? "checked" : ""}> 设为默认收货地址</label>
+          <input type="hidden" name="id" value="${esc(address.id || "")}">
+        </form>
+        <p class="mini-notice">地址仅保存在当前浏览器，用于本原型的本地配送演示。</p>
+      </div>`,
+      bottom: `<div class="address-form-actions"><button type="button" class="primary-btn" data-action="address-save">保存地址</button></div>`
+    });
+  }
+
+  async function locateAddress(form) {
+    const status = root.querySelector("#address-location-status");
+    if (!navigator.geolocation) {
+      status.textContent = "当前浏览器不支持定位，请手动填写地址";
+      return;
+    }
+    status.textContent = "正在获取当前位置...";
+    navigator.geolocation.getCurrentPosition(async position => {
+      const { latitude, longitude } = position.coords;
+      status.textContent = `已获取坐标 ${latitude.toFixed(5)}, ${longitude.toFixed(5)}，正在解析地址...`;
+      try {
+        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&accept-language=zh-CN`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("地址解析服务暂不可用");
+        const result = await response.json();
+        const region = result.address || {};
+        form.elements.province.value = region.state || region.province || "";
+        form.elements.city.value = region.city || region.municipality || region.town || region.village || region.county || "";
+        form.elements.district.value = region.city_district || region.district || region.suburb || region.county || "";
+        form.elements.detail.value = [region.road, region.neighbourhood, region.house_number].filter(Boolean).join("");
+        status.textContent = result.address ? "已填入定位地址，请核对并补充门牌号" : "已获取坐标，未解析出地址，请手动补全";
+      } catch {
+        form.elements.detail.value = `当前位置坐标 ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+        status.textContent = "坐标已获取但地址解析失败，请手动补全省市区和门牌号";
       }
-      status.textContent = "正在获取当前位置...";
-      navigator.geolocation.getCurrentPosition(async position => {
-        const { latitude, longitude } = position.coords;
-        status.textContent = `已获取坐标 ${latitude.toFixed(5)}, ${longitude.toFixed(5)}，正在解析地址...`;
-        try {
-          const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&accept-language=zh-CN`;
-          const response = await fetch(url);
-          if (!response.ok) throw new Error("地址解析服务暂不可用");
-          const result = await response.json();
-          const region = result.address || {};
-          form.elements.province.value = region.state || region.province || "";
-          form.elements.city.value = region.city || region.municipality || region.town || region.village || region.county || "";
-          form.elements.district.value = region.city_district || region.district || region.suburb || region.county || "";
-          form.elements.detail.value = [region.road, region.neighbourhood, region.house_number].filter(Boolean).join("");
-          status.textContent = result.address ? "已填入定位地址，请核对并补充门牌号" : "已获取坐标，未解析出地址，请手动补全";
-        } catch {
-          form.elements.detail.value = `当前位置坐标 ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
-          status.textContent = "坐标已获取但地址解析失败，请手动补全省市区和门牌号";
-        }
-      }, error => {
-        status.textContent = error.code === 1 ? "定位权限未授权，请允许浏览器访问位置" : "定位失败，请检查系统定位权限或手动填写";
-      }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
-    });
-    backdrop.querySelector("[data-action='address-save']")?.addEventListener("click", () => {
-      const form = backdrop.querySelector("#address-form");
-      if (!form.reportValidity()) return;
-      const values = new FormData(form);
-      const id = String(values.get("id") || `ADDR-${Date.now()}`);
-      const addressData = {
-        id,
-        name: String(values.get("name")).trim(),
-        phone: String(values.get("phone")).trim(),
-        province: String(values.get("province")).trim(),
-        city: String(values.get("city")).trim(),
-        district: String(values.get("district")).trim(),
-        detail: String(values.get("detail")).trim(),
-        isDefault: values.get("isDefault") === "on"
-      };
-      if (addressData.isDefault || !state.addresses.length) state.addresses = state.addresses.map(item => ({ ...item, isDefault: false }));
-      const existingIndex = state.addresses.findIndex(item => item.id === id);
-      if (existingIndex >= 0) state.addresses[existingIndex] = addressData;
-      else state.addresses.unshift(addressData);
-      if (addressData.isDefault || state.selectedAddress?.id === id || !selectedAddress(state)) state.selectedAddress = addressData;
-      write(state);
-      closeModal();
-      renderAddresses();
-      toast("地址已保存");
-    });
+    }, error => {
+      status.textContent = error.code === 1 ? "定位权限未授权，请允许浏览器访问位置" : "定位失败，请检查系统定位权限或手动填写";
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+  }
+
+  function saveAddress() {
+    const form = root.querySelector("#address-form");
+    if (!form?.reportValidity()) return;
+    const values = new FormData(form);
+    const id = String(values.get("id") || `ADDR-${Date.now()}`);
+    const addressData = {
+      id,
+      name: String(values.get("name")).trim(),
+      phone: String(values.get("phone")).trim(),
+      province: String(values.get("province")).trim(),
+      city: String(values.get("city")).trim(),
+      district: String(values.get("district")).trim(),
+      detail: String(values.get("detail")).trim(),
+      isDefault: values.get("isDefault") === "on"
+    };
+    state = read();
+    state.addresses ||= [];
+    if (addressData.isDefault || !state.addresses.length) state.addresses = state.addresses.map(item => ({ ...item, isDefault: false }));
+    const existingIndex = state.addresses.findIndex(item => item.id === id);
+    if (existingIndex >= 0) state.addresses[existingIndex] = addressData;
+    else state.addresses.unshift(addressData);
+    if (addressData.isDefault || state.selectedAddress?.id === id || !selectedAddress(state)) state.selectedAddress = addressData;
+    write(state);
+    location.href = addressListUrl(true);
   }
 
   function renderPoints() {
@@ -1057,6 +1098,93 @@
     location.href = `mini-product.html?id=${encodeURIComponent(productId)}`;
   }
 
+  const reviewDemoNames = ["林*宁", "M*rio", "周*琪", "陈*远", "用户***28", "徐*雅", "K*vin", "赵*宁"];
+  const reviewDemoTexts = [
+    "收到后检查了一下，商品和介绍一致，整体体验不错。",
+    "包装完整，配送速度可以，日常使用很方便。",
+    "做工和细节符合预期，已经开始使用了。",
+    "外观简洁，使用体验不错，会继续关注后续活动。",
+    "整体满意，客服回复及时，物流信息也很清楚。"
+  ];
+
+  function reviewAt(product, reviews, index) {
+    if (reviews[index]) return reviews[index];
+    return {
+      id: `DEMO-${product.id}-${index + 1}`,
+      name: reviewDemoNames[index % reviewDemoNames.length],
+      date: `2026-10-${String(20 - (index % 18)).padStart(2, "0")}`,
+      rating: index % 7 === 0 ? 4 : 5,
+      text: reviewDemoTexts[index % reviewDemoTexts.length],
+      images: [],
+      reply: null,
+      isDemo: true
+    };
+  }
+
+  function renderReviewCard(review) {
+    return `<article class="detail-review">
+      <div class="detail-review-head"><strong>${esc(review.name || "商城用户")}</strong><span>${esc(review.date || "")}</span></div>
+      <div class="detail-stars">${"★".repeat(Math.max(1, Math.min(5, Number(review.rating || 5)))).padEnd(5, "☆")}</div>
+      <p>${esc(review.text || "用户已提交评分")}</p>
+      ${review.images?.length ? `<div class="detail-review-images">${review.images.map(src => `<img loading="lazy" src="${esc(src)}" alt="用户评价图片">`).join("")}</div>` : ""}
+      ${review.reply?.text ? `<div class="detail-review-reply"><strong>${esc(review.reply.operator || "商家回复")}</strong><span>${esc(review.reply.text)}</span></div>` : ""}
+    </article>`;
+  }
+
+  function renderProductReviews() {
+    state = read();
+    const product = productById(params.get("id"));
+    if (!product) {
+      miniShell({
+        pageTitle: "商品评价",
+        header: `<div class="mini-head-row"><a class="head-link" href="mini-shop.html" aria-label="返回商城">${icon("chevron")}</a><span class="mini-title">商品评价</span><span></span></div>`,
+        content: `<div class="empty-state"><strong>商品不存在</strong><p>该商品可能已下架或链接已失效</p><a class="primary-btn small" href="mini-shop.html">返回商城</a></div>`
+      });
+      return;
+    }
+    const reviews = (product.reviews || []).filter(review => review.status !== "hidden");
+    const total = Math.max(reviews.length, Number(product.reviewCount || 0));
+    const batchSize = 10;
+    let loaded = Math.min(batchSize, total);
+    miniShell({
+      pageTitle: "商品评价",
+      header: `<div class="mini-head-row"><a class="head-link" href="mini-product.html?id=${encodeURIComponent(product.id)}#detail-reviews" aria-label="返回商品详情">${icon("chevron")}</a><span class="mini-title">商品评价</span><span></span></div>`,
+      content: `<div class="mini-content product-reviews-page">
+        <section class="detail-card reviews-product-card">
+          <img src="${esc(product.image)}" alt="">
+          <div><strong>${esc(product.name)}</strong><span>${Number(product.rating || 4.8).toFixed(1)} 分 · ${total.toLocaleString()} 条评价</span></div>
+        </section>
+        <p class="review-demo-notice">评价内容为原型演示数据，向上滑动可继续加载。</p>
+        <section class="reviews-feed" id="reviews-feed">${Array.from({ length: loaded }, (_, index) => renderReviewCard(reviewAt(product, reviews, index))).join("")}</section>
+        <div class="reviews-load-sentinel" id="reviews-load-sentinel" aria-live="polite">${loaded < total ? "继续滑动，加载更多评价…" : "已展示全部评价"}</div>
+      </div>`
+    });
+    const scrollRoot = root.querySelector(".mini-main");
+    const feed = root.querySelector("#reviews-feed");
+    const sentinel = root.querySelector("#reviews-load-sentinel");
+    const loadNext = () => {
+      if (loaded >= total || !sentinel?.isConnected) return;
+      const next = Math.min(batchSize, total - loaded);
+      feed.insertAdjacentHTML("beforeend", Array.from({ length: next }, (_, offset) =>
+        renderReviewCard(reviewAt(product, reviews, loaded + offset))
+      ).join(""));
+      loaded += next;
+      sentinel.textContent = loaded < total ? "继续滑动，加载更多评价…" : "已展示全部评价";
+      if (loaded >= total) observer?.disconnect();
+    };
+    let observer;
+    if ("IntersectionObserver" in window) {
+      observer = new IntersectionObserver(entries => {
+        if (entries.some(entry => entry.isIntersecting)) loadNext();
+      }, { root: scrollRoot, rootMargin: "180px 0px" });
+      if (loaded < total) observer.observe(sentinel);
+    } else if (scrollRoot && loaded < total) {
+      scrollRoot.addEventListener("scroll", () => {
+        if (sentinel.getBoundingClientRect().top < scrollRoot.getBoundingClientRect().bottom + 180) loadNext();
+      }, { passive: true });
+    }
+  }
+
   function renderProductDetail() {
     state = read();
     const product = productById(params.get("id"));
@@ -1086,6 +1214,7 @@
     const rank = ranked.findIndex(item => item.id === product.id);
     const topProducts = ranked.slice(0, 10);
     const reviews = (product.reviews || []).filter(review => review.status !== "hidden");
+    const reviewTotal = Math.max(reviews.length, Number(product.reviewCount || 0));
     const skuSpecs = sku => sku.specs?.length ? sku.specs : [{ name: "版本", value: "标准版" }];
     const selectedSpecs = Object.fromEntries(skuSpecs(currentSku).map(spec => [spec.name, spec.value]));
     const selectedAddress = state.selectedAddress || state.addresses?.find(item => item.isDefault) || state.addresses?.[0];
@@ -1157,9 +1286,10 @@
           </div>
         </details>
         <section class="detail-card detail-reviews" id="detail-reviews">
-          <div class="detail-section-title"><h2>用户评价</h2><a href="#detail-reviews">好评率 98%　›</a></div>
+          <div class="detail-section-title"><h2>用户评价</h2>${reviewTotal > 5 ? `<a href="mini-reviews.html?id=${encodeURIComponent(product.id)}">查看全部　›</a>` : `<span>全部 ${reviewTotal} 条</span>`}</div>
           <div class="detail-rating"><strong>${Number(product.rating || 4.8).toFixed(1)}</strong><span>★★★★★</span><small>${Number(product.reviewCount || 0).toLocaleString()} 条评价</small></div>
-          ${reviews.slice(0, 3).map(review => `<article class="detail-review"><div class="detail-review-head"><strong>${esc(review.name || "商城用户")}</strong><span>${esc(review.date || "")}</span></div><div class="detail-stars">${"★".repeat(Math.max(1, Math.min(5, Number(review.rating || 5)))).padEnd(5, "☆")}</div><p>${esc(review.text || "用户已提交评分")}</p>${review.images?.length ? `<div class="detail-review-images">${review.images.map(src => `<img loading="lazy" src="${esc(src)}" alt="用户评价图片">`).join("")}</div>` : ""}${review.reply?.text ? `<div class="detail-review-reply"><strong>${esc(review.reply.operator || "商家回复")}</strong><span>${esc(review.reply.text)}</span></div>` : ""}</article>`).join("")}
+          ${reviews.length < Math.min(5, reviewTotal) ? `<p class="review-demo-notice">部分评价为原型演示内容</p>` : ""}
+          ${Array.from({ length: Math.min(5, reviewTotal) }, (_, index) => renderReviewCard(reviewAt(product, reviews, index))).join("")}
         </section>
         <section class="detail-description" id="detail-description">
           <div class="detail-description-title"><span></span><strong>商品详情</strong><span></span></div>
@@ -1169,7 +1299,20 @@
         </section>
         <section class="detail-related" id="detail-related"><div class="detail-section-title"><h2>为你推荐</h2><span>更多好物</span></div><div class="detail-related-grid">${recommendations.map(item => `<button type="button" class="detail-related-card" data-action="detail" data-id="${esc(item.id)}"><img loading="lazy" src="${esc(item.image)}" alt="${esc(item.name)}"><strong>${esc(item.name)}</strong><span>${money(Math.min(...(item.skus || []).map(sku => Number(sku.price)).filter(Number.isFinite), Number(item.price || 0)))}</span></button>`).join("")}</div></section>
       </div>`,
-      bottom: `<div class="detail-buybar"><a href="mini-cart.html" class="detail-cart-link">${icon("cart")}<span>购物车</span></a><button type="button" class="detail-add-btn" data-action="detail-add" ${Number(currentSku.stock) <= 0 ? "disabled" : ""}>加入购物车</button><button type="button" class="detail-buy-btn" data-action="detail-buy" ${Number(currentSku.stock) <= 0 ? "disabled" : ""}>立即购买</button></div>`
+      bottom: `<details class="product-share-accordion">
+        <summary><span>分享商品</span><small>微信好友 · 朋友圈 · 商品海报</small><span class="share-accordion-chevron" aria-hidden="true"></span></summary>
+        <div class="product-share-dialog">
+          <p class="product-share-intro">好友打开商品链接后，会直接进入此商品详情页。</p>
+          <div class="product-share-options">
+            <button type="button" data-share-channel="wechat_friend"><span class="share-option-mark friend">微</span><strong>微信好友</strong><small>复制链接后粘贴发送</small></button>
+            <button type="button" data-share-channel="wechat_moments"><span class="share-option-mark moments">圈</span><strong>朋友圈</strong><small>复制链接后发布到朋友圈</small></button>
+            <button type="button" data-share-channel="poster"><span class="share-option-mark poster">海</span><strong>商品海报</strong><small>预览后打印或保存</small></button>
+          </div>
+          <div class="share-result" aria-live="polite"></div>
+          <p class="product-share-foot">分享链接包含商品详情地址和来源标识；本原型模拟链接跳转与来源记录。</p>
+        </div>
+      </details>
+      <div class="detail-buybar"><a href="mini-cart.html" class="detail-cart-link">${icon("cart")}<span>购物车</span></a><button type="button" class="detail-add-btn" data-action="detail-add" ${Number(currentSku.stock) <= 0 ? "disabled" : ""}>加入购物车</button><button type="button" class="detail-buy-btn" data-action="detail-buy" ${Number(currentSku.stock) <= 0 ? "disabled" : ""}>立即购买</button></div>`
     });
     const galleryBox = root.querySelector(".detail-gallery");
     let startX = 0;
@@ -1255,20 +1398,18 @@
   }
 
   function openProductShare() {
+    const panel = root.querySelector(".product-share-accordion");
+    if (!panel) return toast("商品信息暂不可分享");
+    panel.open = true;
+    panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function shareProductChannel(channel) {
     const product = productById(params.get("id"));
     const sku = product?.skus?.find(item => item.id === detailSkuId) || product?.skus?.[0];
-    if (!product || !sku) return toast("商品信息暂不可分享");
-    const backdrop = openModal("分享商品", `<div class="product-share-dialog">
-      <p class="product-share-intro">好友打开商品链接后，会直接进入此商品详情页。</p>
-      <div class="product-share-options">
-        <button type="button" data-share-channel="wechat_friend"><span class="share-option-mark friend">微</span><strong>微信好友</strong><small>复制链接后粘贴发送</small></button>
-        <button type="button" data-share-channel="wechat_moments"><span class="share-option-mark moments">圈</span><strong>朋友圈</strong><small>复制链接后发布到朋友圈</small></button>
-        <button type="button" data-share-channel="poster"><span class="share-option-mark poster">海</span><strong>商品海报</strong><small>预览后打印或保存</small></button>
-      </div>
-      <div class="share-result" aria-live="polite"></div>
-      <p class="product-share-foot">分享链接包含商品详情地址和来源标识；本原型模拟链接跳转与来源记录。</p>
-    </div>`, `<button type="button" class="secondary-btn" data-modal-close>关闭</button>`);
-    const result = backdrop.querySelector(".share-result");
+    const panel = root.querySelector(".product-share-accordion");
+    const result = panel?.querySelector(".share-result");
+    if (!product || !sku || !result) return toast("商品信息暂不可分享");
     const copyLink = async input => {
       input.focus();
       input.select();
@@ -1280,19 +1421,16 @@
         toast("请长按链接复制");
       }
     };
-    backdrop.querySelectorAll("[data-share-channel]").forEach(button => {
-      button.addEventListener("click", () => {
-        try {
-          const channel = button.dataset.shareChannel;
-          const token = window.MallOps.createShareToken({ productId: product.id, channel });
-          const url = new URL("mini-product.html", location.href);
-          url.searchParams.set("id", product.id);
-          url.searchParams.set("sku", sku.id);
-          url.searchParams.set("share", token.token);
-          const link = url.href;
-          if (channel === "poster") {
-            backdrop.classList.add("poster-print-open");
-            result.innerHTML = `<article class="product-poster">
+    try {
+      const token = window.MallOps.createShareToken({ productId: product.id, channel });
+      const url = new URL("mini-product.html", location.href);
+      url.searchParams.set("id", product.id);
+      url.searchParams.set("sku", sku.id);
+      url.searchParams.set("share", token.token);
+      const link = url.href;
+      if (channel === "poster") {
+        panel.classList.add("poster-print-open");
+        result.innerHTML = `<article class="product-poster">
                 <div class="product-poster-brand"><span>MI SELECT</span><small>品质好物 · 值得分享</small></div>
                 <img src="${esc(sku.image || product.gallery?.[0] || product.image)}" alt="${esc(product.name)}">
                 <div class="product-poster-copy"><small>为你精选</small><h2>${esc(product.name)}</h2><p>${esc(product.subtitle || "")}</p>
@@ -1301,24 +1439,27 @@
               </article>
               <input class="share-poster-url" type="url" readonly value="${esc(link)}" aria-label="海报商品链接">
               <div class="share-poster-controls"><button type="button" class="secondary-btn" data-copy-share>复制商品链接</button><button type="button" class="primary-btn small" data-print-poster>打印 / 保存海报</button></div>`;
-          } else {
-            backdrop.classList.remove("poster-print-open");
-            const channelName = channel === "wechat_moments" ? "朋友圈" : "微信好友";
-            result.innerHTML = `<div class="share-link-result"><strong>${channelName}商品链接已生成</strong><p>复制链接后粘贴到${channelName}；好友点击即可进入此商品详情。</p>
+      } else {
+        panel.classList.remove("poster-print-open");
+        const channelName = channel === "wechat_moments" ? "朋友圈" : "微信好友";
+        result.innerHTML = `<div class="share-link-result"><strong>${channelName}商品链接已生成</strong><p>复制链接后粘贴到${channelName}；好友点击即可进入此商品详情。</p>
                 <label class="field">商品详情链接<input type="url" readonly value="${esc(link)}"></label>
                 <button type="button" class="primary-btn small" data-copy-share>复制链接</button></div>`;
-          }
-          const copyButton = result.querySelector("[data-copy-share]");
-          copyButton?.addEventListener("click", () => copyLink(result.querySelector('input[type="url"]')));
-          result.querySelector("[data-print-poster]")?.addEventListener("click", () => window.print());
-        } catch (error) {
-          toast(error.message || "暂时无法生成分享链接");
-        }
-      });
-    });
+      }
+      const copyButton = result.querySelector("[data-copy-share]");
+      copyButton?.addEventListener("click", () => copyLink(result.querySelector('input[type="url"]')));
+      result.querySelector("[data-print-poster]")?.addEventListener("click", () => window.print());
+    } catch (error) {
+      toast(error.message || "暂时无法生成分享链接");
+    }
   }
 
   root.addEventListener("click", event => {
+    const shareChannel = event.target.closest("[data-share-channel]");
+    if (shareChannel) {
+      shareProductChannel(shareChannel.dataset.shareChannel);
+      return;
+    }
     const control = event.target.closest("[data-action]");
     if (!control) return;
     const action = control.dataset.action;
@@ -1422,6 +1563,11 @@
     } else if (action === "address-edit") {
       const address = state.addresses?.find(item => item.id === control.dataset.id);
       if (address) openAddressForm(address);
+    } else if (action === "address-locate") {
+      const form = root.querySelector("#address-form");
+      if (form) locateAddress(form);
+    } else if (action === "address-save") {
+      saveAddress();
     } else if (action === "address-select" || action === "address-default" || action === "address-use") {
       state = read();
       const address = state.addresses?.find(item => item.id === control.dataset.id);
@@ -1581,8 +1727,10 @@
   else if (page === "cart") renderCart();
   else if (page === "profile") renderProfileView();
   else if (page === "addresses") renderAddresses();
+  else if (page === "address-form") renderAddressForm();
   else if (page === "points") renderPoints();
   else if (page === "shop") renderShop();
   else if (page === "zone") renderZone();
   else if (page === "product-detail") renderProductDetail();
+  else if (page === "product-reviews") renderProductReviews();
 })();
