@@ -425,10 +425,15 @@ img { display: block; max-width: 100%; }
 .nav-label { margin: 10px 11px 8px; color: #a3a5a8; font-size: 10px; }
 .admin-nav { display: flex; flex-direction: column; gap: 4px; }
 .admin-sidebar > .admin-nav { max-height: calc(100vh - 255px); overflow-y: auto; scrollbar-width: thin; }
-.admin-nav a { min-height: 42px; display: flex; align-items: center; gap: 11px; padding: 0 12px; border-radius: 8px; color: #6e7176; font-size: 12px; }
-.admin-nav a svg { width: 17px; height: 17px; stroke: currentColor; }
+.admin-nav a, .admin-nav-group > summary { min-height: 42px; display: flex; align-items: center; gap: 11px; padding: 0 12px; border-radius: 8px; color: #6e7176; font-size: 12px; cursor: pointer; }
+.admin-nav-group > summary { list-style: none; user-select: none; }
+.admin-nav-group > summary::-webkit-details-marker { display: none; }
+.admin-nav a svg, .admin-nav-group > summary svg { width: 17px; height: 17px; stroke: currentColor; }
 .admin-nav a.active { color: var(--orange); background: #fff2e9; font-weight: 650; }
-.admin-nav a:hover:not(.active) { background: #f7f7f7; }
+.admin-nav-group > summary.active { color: var(--orange); font-weight: 650; }
+.admin-nav a:hover:not(.active), .admin-nav-group > summary:hover { background: #f7f7f7; }
+.admin-nav-caret { width: 7px; height: 7px; margin: 0 2px 3px auto; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); transition: transform .18s ease; }
+.admin-nav-group[open] > summary .admin-nav-caret { margin-bottom: -3px; transform: rotate(225deg); }
 .admin-subnav { display: grid; gap: 3px; margin: -1px 0 6px 28px; padding-left: 10px; border-left: 1px solid #eceef0; }
 .admin-nav .admin-subnav a { min-height: 31px; padding: 0 9px; color: #83878d; font-size: 10px; }
 .admin-nav .admin-subnav a.active { color: var(--orange); background: #fff7f1; }

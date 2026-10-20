@@ -4,17 +4,6 @@
   const root = document.getElementById("root");
   if (!root) return;
 
-  const tabItems = [
-    ["overview", "分销总览"],
-    ["applications", "推广员申请"],
-    ["promoters", "推广员档案"],
-    ["relations", "推广关系"],
-    ["rules", "等级与佣金规则"],
-    ["ledger", "佣金账本"],
-    ["payouts", "提现与出款"],
-    ["risk", "风控异常"],
-    ["audit", "操作审计"]
-  ];
   const statusNames = {
     pending: "待确认收货",
     frozen: "冻结中",
@@ -64,11 +53,9 @@
   function table(headers, rows, className = "") {
     return `<div class="table-wrap"><table class="admin-table dist-admin-table ${className}"><thead><tr>${headers.map(item => `<th>${item}</th>`).join("")}</tr></thead><tbody>${rows || `<tr><td colspan="${headers.length}"><div class="admin-empty">暂无记录</div></td></tr>`}</tbody></table></div>`;
   }
-  function tabs() {
-    return `<nav class="dist-admin-tabs">${tabItems.map(([id, label]) => `<a class="${activeTab === id ? "active" : ""}" href="admin-distribution.html?tab=${id}">${label}</a>`).join("")}</nav>`;
-  }
   function page(title, description, body, actions = "") {
-    root.innerHTML = adminShell("distribution", `${head(title, description, actions)}${tabs()}${body}`);
+    const activeMenu = activeTab === "overview" ? "distribution" : `distribution-${activeTab}`;
+    root.innerHTML = adminShell(activeMenu, `${head(title, description, actions)}${body}`);
   }
   function filtersFor(listId) {
     if (!listFilters[listId]) listFilters[listId] = { query: "", status: "", type: "" };

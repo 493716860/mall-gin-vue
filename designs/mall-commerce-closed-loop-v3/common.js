@@ -142,49 +142,77 @@
   window.addEventListener("pageshow", refreshMessageEntries);
 
   function adminShell(active, content) {
-    const nav = [
-      ["overview", "经营总览", "chart", "admin-overview.html"],
-      ["orders", "订单管理", "order", "admin-orders.html"],
-      ["aftersales", "售后管理", "service", "admin-aftersales.html"],
-      ["reviews", "评论管理", "chat", "admin-products.html?view=reviews"],
-      ["marketing", "营销中心", "gift", "admin-marketing.html"],
-      ["distribution", "分销管理", "chart", "admin-distribution.html"],
-      ["logistics", "快递 / 物流", "truck", "admin-logistics.html"],
-      ["users", "用户管理", "user", "admin-users.html"],
-      ["products", "商品管理", "box", "admin-products.html"],
-      ["membership", "会员等级", "member", "admin-membership.html"],
-      ["banners", "Banner 与专区", "image", "admin-banner-zones.html"],
-      ["legal", "协议与规则", "file", "admin-legal.html"]
+    const navigation = [
+      { key: "overview", title: "经营总览", glyph: "chart", href: "admin-overview.html" },
+      { key: "trade", title: "交易管理", glyph: "order", items: [
+        ["orders", "订单管理", "admin-orders.html"],
+        ["aftersales", "售后管理", "admin-aftersales.html"]
+      ] },
+      { key: "catalog", title: "商品运营", glyph: "box", items: [
+        ["products", "商品管理", "admin-products.html"],
+        ["reviews", "评论管理", "admin-products.html?view=reviews"]
+      ] },
+      { key: "customers", title: "用户运营", glyph: "user", items: [
+        ["users", "用户管理", "admin-users.html"],
+        ["membership", "会员等级", "admin-membership.html"]
+      ] },
+      { key: "marketing", title: "营销中心", glyph: "gift", items: [
+        ["marketing", "营销总览", "admin-marketing.html"],
+        ["marketing-campaigns", "主题活动", "admin-marketing-campaigns.html"],
+        ["marketing-flash", "限时秒杀", "admin-marketing-flash.html"],
+        ["marketing-groups", "好友拼团", "admin-marketing-groups.html"]
+      ] },
+      { key: "distribution", title: "分销管理", glyph: "chart", items: [
+        ["distribution", "分销总览", "admin-distribution.html?tab=overview"],
+        ["distribution-applications", "推广员申请", "admin-distribution.html?tab=applications"],
+        ["distribution-promoters", "推广员档案", "admin-distribution.html?tab=promoters"],
+        ["distribution-relations", "推广关系", "admin-distribution.html?tab=relations"],
+        ["distribution-rules", "等级与佣金规则", "admin-distribution.html?tab=rules"],
+        ["distribution-ledger", "佣金账本", "admin-distribution.html?tab=ledger"],
+        ["distribution-payouts", "提现与出款", "admin-distribution.html?tab=payouts"],
+        ["distribution-risk", "风控异常", "admin-distribution.html?tab=risk"],
+        ["distribution-audit", "操作审计", "admin-distribution.html?tab=audit"]
+      ] },
+      { key: "logistics", title: "快递 / 物流", glyph: "truck", href: "admin-logistics.html" },
+      { key: "content", title: "内容与规则", glyph: "file", items: [
+        ["banners", "Banner 与专区", "admin-banner-zones.html"],
+        ["legal", "协议与规则", "admin-legal.html"]
+      ] }
     ];
-    const marketingSubnav = [
-      ["marketing", "营销总览", "admin-marketing.html"],
-      ["marketing-campaigns", "主题活动", "admin-marketing-campaigns.html"],
-      ["marketing-flash", "限时秒杀", "admin-marketing-flash.html"],
-      ["marketing-groups", "好友拼团", "admin-marketing-groups.html"]
-    ];
-    const marketingActive = active === "marketing" || active.startsWith("marketing-");
-    const activeTitle = {
-      "marketing-campaigns": "营销中心 / 主题活动",
-      "marketing-flash": "营销中心 / 限时秒杀",
-      "marketing-groups": "营销中心 / 好友拼团"
-    }[active];
+    const activeGroup = navigation.find(item => item.items?.some(([key]) => key === active));
+    const activeEntry = navigation.flatMap(item => item.items || [item]).find(item => item[0] === active || item.key === active);
+    const entryTitle = activeEntry ? (activeEntry.title || activeEntry[1]) : (activeGroup?.title || "工作台");
+    const activeTitle = activeGroup ? `${activeGroup.title} / ${entryTitle}` : entryTitle;
+    const groupLink = ([key, title, href]) => `<a class="${key === active ? "active" : ""}" href="${href}" ${key === active ? 'aria-current="page"' : ""}>${title}</a>`;
+    const sidebarNavigation = navigation.map(item => {
+      if (!item.items) return `<a class="admin-nav-link ${item.key === active ? "active" : ""}" href="${item.href}" ${item.key === active ? 'aria-current="page"' : ""}>${icon(item.glyph)}<span>${item.title}</span></a>`;
+      const expanded = item === activeGroup;
+      return `<details class="admin-nav-group" ${expanded ? "open" : ""}>
+        <summary class="${expanded ? "active" : ""}">${icon(item.glyph)}<span>${item.title}</span><i class="admin-nav-caret" aria-hidden="true"></i></summary>
+        <div class="admin-subnav">${item.items.map(groupLink).join("")}</div>
+      </details>`;
+    }).join("");
+    const mobileNavigation = navigation.map(item => {
+      const href = item.href || item.items[0][2];
+      const selected = item === activeGroup || item.key === active;
+      return `<a class="filter-chip ${selected ? "active" : ""}" href="${href}">${item.title}</a>`;
+    }).join("");
+    const mobileSubnav = activeGroup
+      ? `<nav class="mobile-admin-subnav">${activeGroup.items.map(([key, title, href]) => `<a class="filter-chip ${key === active ? "active" : ""}" href="${href}">${title}</a>`).join("")}</nav>`
+      : "";
     return `<div class="admin-shell">
       <aside class="admin-sidebar">
         <div class="admin-brand"><span class="brand-mark">M</span><div><div class="brand-title">MALL STUDIO</div><div class="brand-caption">运营管理平台</div></div></div>
         <div class="nav-label">商城运营</div>
-        <nav class="admin-nav">${nav.map(([key, title, glyph, href]) =>
-          `${key === "marketing" ? `<a class="${marketingActive ? "active" : ""}" href="${href}">${icon(glyph)}<span>${title}</span></a>${marketingActive ? `<div class="admin-subnav">${marketingSubnav.map(([subkey, subtitle, subhref]) => `<a class="${subkey === active ? "active" : ""}" href="${subhref}">${subtitle}</a>`).join("")}</div>` : ""}` : `<a class="${key === active ? "active" : ""}" href="${href}">${icon(glyph)}<span>${title}</span></a>`}`
-        ).join("")}</nav>
+        <nav class="admin-nav">${sidebarNavigation}</nav>
         <div class="nav-label" style="margin-top:22px">工作台</div>
         <nav class="admin-nav"><a href="index.html">${icon("chart")}<span>原型总览</span></a></nav>
         <div class="sidebar-bottom"><div class="sidebar-user"><span class="sidebar-avatar">林</span><div><strong>林运营</strong><small>超级管理员</small></div></div></div>
       </aside>
       <main class="admin-main">
-        <header class="admin-topbar"><div class="breadcrumbs">商城运营　/　<strong>${activeTitle || nav.find(item => item[0] === active)?.[1] || (active.startsWith("marketing-") ? "营销中心" : "工作台")}</strong></div><div class="admin-top-actions"><span>⌕　帮助中心</span><span>●</span><span>林运营　⌄</span></div></header>
-        <nav class="mobile-admin-nav">${nav.map(([key, title, glyph, href]) =>
-          `<a class="filter-chip ${key === active || key === "marketing" && marketingActive ? "active" : ""}" href="${href}">${title}</a>`
-        ).join("")}</nav>
-        ${marketingActive ? `<nav class="mobile-admin-subnav">${marketingSubnav.map(([key, title, href]) => `<a class="filter-chip ${key === active ? "active" : ""}" href="${href}">${title}</a>`).join("")}</nav>` : ""}
+        <header class="admin-topbar"><div class="breadcrumbs">商城运营　/　<strong>${activeTitle}</strong></div><div class="admin-top-actions"><span>⌕　帮助中心</span><span>●</span><span>林运营　⌄</span></div></header>
+        <nav class="mobile-admin-nav">${mobileNavigation}</nav>
+        ${mobileSubnav}
         ${content}
       </main>
     </div>`;
