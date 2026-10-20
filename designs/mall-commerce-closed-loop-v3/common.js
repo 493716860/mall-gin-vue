@@ -137,22 +137,35 @@
       ["banners", "Banner 与专区", "image", "admin-banner-zones.html"],
       ["legal", "协议与规则", "file", "admin-legal.html"]
     ];
+    const marketingSubnav = [
+      ["marketing", "营销总览", "admin-marketing.html"],
+      ["marketing-campaigns", "主题活动", "admin-marketing-campaigns.html"],
+      ["marketing-flash", "限时秒杀", "admin-marketing-flash.html"],
+      ["marketing-groups", "好友拼团", "admin-marketing-groups.html"]
+    ];
+    const marketingActive = active === "marketing" || active.startsWith("marketing-");
+    const activeTitle = {
+      "marketing-campaigns": "营销中心 / 主题活动",
+      "marketing-flash": "营销中心 / 限时秒杀",
+      "marketing-groups": "营销中心 / 好友拼团"
+    }[active];
     return `<div class="admin-shell">
       <aside class="admin-sidebar">
         <div class="admin-brand"><span class="brand-mark">M</span><div><div class="brand-title">MALL STUDIO</div><div class="brand-caption">运营管理平台</div></div></div>
         <div class="nav-label">商城运营</div>
         <nav class="admin-nav">${nav.map(([key, title, glyph, href]) =>
-          `<a class="${key === active ? "active" : ""}" href="${href}">${icon(glyph)}<span>${title}</span></a>`
+          `${key === "marketing" ? `<a class="${marketingActive ? "active" : ""}" href="${href}">${icon(glyph)}<span>${title}</span></a>${marketingActive ? `<div class="admin-subnav">${marketingSubnav.map(([subkey, subtitle, subhref]) => `<a class="${subkey === active ? "active" : ""}" href="${subhref}">${subtitle}</a>`).join("")}</div>` : ""}` : `<a class="${key === active ? "active" : ""}" href="${href}">${icon(glyph)}<span>${title}</span></a>`}`
         ).join("")}</nav>
         <div class="nav-label" style="margin-top:22px">工作台</div>
         <nav class="admin-nav"><a href="index.html">${icon("chart")}<span>原型总览</span></a></nav>
         <div class="sidebar-bottom"><div class="sidebar-user"><span class="sidebar-avatar">林</span><div><strong>林运营</strong><small>超级管理员</small></div></div></div>
       </aside>
       <main class="admin-main">
-        <header class="admin-topbar"><div class="breadcrumbs">商城运营　/　<strong>${nav.find(item => item[0] === active)?.[1] || "工作台"}</strong></div><div class="admin-top-actions"><span>⌕　帮助中心</span><span>●</span><span>林运营　⌄</span></div></header>
+        <header class="admin-topbar"><div class="breadcrumbs">商城运营　/　<strong>${activeTitle || nav.find(item => item[0] === active)?.[1] || (active.startsWith("marketing-") ? "营销中心" : "工作台")}</strong></div><div class="admin-top-actions"><span>⌕　帮助中心</span><span>●</span><span>林运营　⌄</span></div></header>
         <nav class="mobile-admin-nav">${nav.map(([key, title, glyph, href]) =>
-          `<a class="filter-chip ${key === active ? "active" : ""}" href="${href}">${title}</a>`
+          `<a class="filter-chip ${key === active || key === "marketing" && marketingActive ? "active" : ""}" href="${href}">${title}</a>`
         ).join("")}</nav>
+        ${marketingActive ? `<nav class="mobile-admin-subnav">${marketingSubnav.map(([key, title, href]) => `<a class="filter-chip ${key === active ? "active" : ""}" href="${href}">${title}</a>`).join("")}</nav>` : ""}
         ${content}
       </main>
     </div>`;

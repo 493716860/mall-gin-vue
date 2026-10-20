@@ -107,6 +107,46 @@
     });
   }
 
+  function renderOrderDetail() {
+    state = read();
+    const query = new URLSearchParams(location.search);
+    const order = state.orders.find(item => item.id === query.get("id"));
+    const source = ["aftersales", "orders", "overview"].includes(query.get("from")) ? query.get("from") : "aftersales";
+    const backHref = source === "orders" ? "admin-orders.html" : source === "overview" ? "admin-overview.html" : "admin-aftersales.html";
+    const activeNav = source === "overview" ? "overview" : source;
+    const actions = `<a class="admin-btn" href="${backHref}">返回${source === "aftersales" ? "售后工单" : source === "orders" ? "订单列表" : "经营总览"}</a>`;
+    if (!order) {
+      root.innerHTML = adminShell(activeNav, `${head("订单详情", "查看订单商品、收货信息、金额与履约进度。", actions)}<section class="panel"><div class="admin-empty">未找到对应订单</div></section>`);
+      return;
+    }
+    const address = order.address || {};
+    const addressLine = address.text || [address.province, address.city, address.district, address.detail].filter(Boolean).join("") || "—";
+    const items = (order.items || []).map(item => `<tr>
+      <td><div class="product-cell"><img src="${esc(item.image || state.products.find(product => product.id === item.productId)?.image || "")}" alt=""><div><strong>${esc(item.name || "商品")}</strong><small>SPU ${esc(item.productId || "—")}${item.skuLabel ? ` · ${esc(item.skuLabel)}` : ""}</small></div></div></td>
+      <td>${money(item.price)}</td><td>${Number(item.qty || 0)}</td><td><strong>${money(Number(item.price || 0) * Number(item.qty || 0))}</strong></td>
+    </tr>`).join("") || `<tr><td colspan="4"><div class="admin-empty">订单没有商品明细</div></td></tr>`;
+    const tracking = (order.tracking || []).map(item => `<div class="order-timeline-item"><span class="order-timeline-dot"></span><div><strong>${esc(item.text || "物流更新")}</strong><small>${esc(item.time || "")} · ${esc(item.place || "")}</small></div></div>`).join("");
+    const events = [
+      ["订单创建", order.createdAt],
+      ["完成支付", order.paidAt],
+      ["商家发货", order.shippedAt],
+      ["确认收货", order.receivedAt]
+    ].filter(([, date]) => date).map(([label, date]) => `<div class="order-timeline-item"><span class="order-timeline-dot"></span><div><strong>${label}</strong><small>${esc(date)}</small></div></div>`).join("");
+    root.innerHTML = adminShell(activeNav, `${head("订单详情", `订单编号 ${esc(order.id)} · ${statusText[order.status] || esc(order.status)}`, actions)}
+      <div class="order-detail-layout">
+        <div class="order-detail-main">
+          ${panel("商品明细", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>商品</th><th>单价</th><th>数量</th><th>小计</th></tr></thead><tbody>${items}</tbody></table></div>`)}
+          ${panel("订单金额", `<div class="order-amount-list"><div><span>商品金额</span><strong>${money(order.subtotal ?? order.total)}</strong></div><div><span>优惠金额</span><strong>− ${money(order.discount || 0)}</strong></div><div><span>运费</span><strong>${money(order.shippingFee || 0)}</strong></div><div class="order-amount-total"><span>实付金额</span><strong>${money(order.total)}</strong></div></div>`)}
+          ${panel("物流轨迹", `<div class="order-timeline">${tracking || `<div class="inline-help">暂无物流轨迹</div>`}</div>`, order.trackingNo ? `${esc(order.carrier || "承运商")} · ${esc(order.trackingNo)}` : "未录入物流")}
+        </div>
+        <aside class="order-detail-side">
+          ${panel("收货信息", `<div class="order-detail-info"><strong>${esc(address.name || "—")}</strong><span>${esc(address.phone || "—")}</span><p>${esc(addressLine)}</p></div>`)}
+          ${panel("订单信息", `<div class="order-detail-info"><div><span>订单状态</span><strong>${statusTag(order.status)}</strong></div><div><span>下单时间</span><strong>${esc(order.createdAt || "—")}</strong></div><div><span>支付方式</span><strong>${esc(order.paymentMethod || "—")}</strong></div><div><span>支付时间</span><strong>${esc(order.paidAt || "—")}</strong></div><div><span>订单备注</span><strong>${esc(order.remark || "无")}</strong></div></div>`)}
+          ${panel("履约进度", `<div class="order-timeline">${events || `<div class="inline-help">暂无后续履约记录</div>`}</div>`)}
+        </aside>
+      </div>`);
+  }
+
   function renderAfterSales() {
     state = read();
     const rows = state.afterSales.map(ticket => {
@@ -118,11 +158,12 @@
       const freightPayer = ticket.returnRequired
         ? `<small style="display:block;margin-top:4px;color:#999">退货运费：${ticket.returnFreightPayer === "merchant" ? "商家承担" : "买家承担"}</small>`
         : "";
+      const orderDetailLink = `<a class="text-action" href="admin-order-detail.html?id=${encodeURIComponent(ticket.orderId)}&from=aftersales">订单详情</a>`;
       const actions = ticket.status === "pending"
-        ? `<button class="text-action" data-action="review-after" data-decision="approve" data-id="${esc(ticket.id)}">${ticket.returnRequired ? "同意退货退款" : "同意退款"}</button><button class="text-action danger" data-action="review-after" data-decision="reject" data-id="${esc(ticket.id)}">拒绝</button>`
+        ? `<button class="text-action" data-action="review-after" data-decision="approve" data-id="${esc(ticket.id)}">${ticket.returnRequired ? "同意退货退款" : "同意退款"}</button><button class="text-action danger" data-action="review-after" data-decision="reject" data-id="${esc(ticket.id)}">拒绝</button>${orderDetailLink}`
         : ticket.status === "return_in_transit"
-          ? `<button class="text-action" data-action="inspect-return" data-id="${esc(ticket.id)}">验收退货</button>`
-          : `<button class="text-action" data-action="view-order" data-id="${esc(ticket.orderId)}">查看订单</button>`;
+          ? `<button class="text-action" data-action="inspect-return" data-id="${esc(ticket.id)}">验收退货</button>${orderDetailLink}`
+          : orderDetailLink;
       return `<tr><td>${esc(ticket.id)}<small style="display:block;margin-top:4px;color:#a0a3a8">${esc(ticket.createdAt || "")}</small></td>
         <td>${esc(ticket.orderId)}<small style="display:block;margin-top:4px;color:#999">${esc(order?.address?.name || "")}</small></td>
         <td>${itemSummary}${freightPayer}</td><td>${esc(ticket.reason)}<small style="display:block;margin-top:4px;color:#999">${esc(ticket.description || "")}</small>${shipment}</td>
@@ -139,15 +180,62 @@
   function renderMarketing() {
     state = read();
     const coupons = state.coupons.map(item => `<tr><td><strong>${esc(item.name)}</strong><small style="display:block;margin-top:4px;color:#999">${item.type === "rate" ? `${Number(item.value) / 10} 折` : `满 ${item.threshold} 减 ${item.value}`}</small></td><td>${item.claimed || 0} / ${Number(item.claimed || 0) + Number(item.stock || 0)}</td><td>${statusTag(item.status)}</td><td><button class="text-action" data-action="toggle-coupon" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></td></tr>`).join("");
-    const campaignRows = state.campaigns.map(item => `<tr><td><strong>${esc(item.name)}</strong><small style="display:block;margin-top:4px;color:#999">${esc(item.subtitle)}</small></td><td>${esc(item.startAt)} - ${esc(item.endAt)}</td><td>${statusTag(item.status)}</td><td><button class="text-action" data-action="toggle-campaign" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></td></tr>`).join("");
-    const saleCards = state.flashSales.map(item => `<div class="list-link"><span>秒杀 · ${esc(state.products.find(p => p.id === item.productId)?.name || item.productId)}　${money(item.price)}　${item.sold}/${item.quota}</span><button class="text-action" data-action="toggle-sale" data-kind="flashSales" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></div>`).join("");
-    const groupCards = state.groupDeals.map(item => `<div class="list-link"><span>拼团 · ${esc(item.title)}　${money(item.groupPrice)}　已参与 ${item.joined}</span><button class="text-action" data-action="toggle-sale" data-kind="groupDeals" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></div>`).join("");
-    const actions = `<button class="admin-btn" data-action="new-campaign">新建活动</button><button class="admin-btn" data-action="new-sale" data-kind="flash">新建秒杀</button><button class="admin-btn" data-action="new-sale" data-kind="group">新建拼团</button><button class="admin-btn primary" data-action="new-coupon">新增优惠券</button>`;
-    root.innerHTML = adminShell("marketing", `${head("营销中心", "统一配置优惠券、主题活动、秒杀与拼团；用户参与记录及支付订单回写共享数据。", actions)}
-      <div class="stats-row">${stat("优惠券", state.coupons.length, "领取后可在结算页使用")}${stat("主题活动", state.campaigns.length, "小程序支持活动报名")}${stat("秒杀场次", state.flashSales.length, "支付后扣减活动名额")}${stat("拼团活动", state.groupDeals.length, "成团人数随支付订单增长")}</div>
-      <div class="compare-layout">${panel("优惠券", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>优惠券</th><th>已领 / 总量</th><th>状态</th><th>操作</th></tr></thead><tbody>${coupons}</tbody></table></div>`, "领取与核销由前台订单驱动")}
-        ${panel("主题活动", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>活动名称</th><th>活动周期</th><th>状态</th><th>操作</th></tr></thead><tbody>${campaignRows}</tbody></table></div>`, `${(state.campaignParticipations || []).length} 人次报名`)}</div>
-      <div style="margin-top:14px">${panel("秒杀与拼团", `<div class="panel-body">${saleCards || `<div class="admin-empty">暂无秒杀</div>`}${groupCards || `<div class="admin-empty">暂无拼团</div>`}</div>`, "暂停后小程序不可参与")}</div>`);
+    const categoryCards = [
+      ["admin-marketing-campaigns.html", "主题活动", "维护活动周期、用户展示内容与报名状态", state.campaigns.length, "campaign"],
+      ["admin-marketing-flash.html", "限时秒杀", "独立维护商品、秒杀价、活动库存与时段", state.flashSales.length, "flash"],
+      ["admin-marketing-groups.html", "好友拼团", "配置拼团价格、成团人数与活动时长", state.groupDeals.length, "group"]
+    ].map(([href, title, description, count, kind]) => `<a class="marketing-category-card ${kind}" href="${href}">
+      <span class="marketing-category-icon">${kind === "campaign" ? "活" : kind === "flash" ? "秒" : "团"}</span>
+      <span class="marketing-category-copy"><strong>${title}</strong><small>${description}</small></span>
+      <span class="marketing-category-count">${count}<small>项活动</small></span>
+      <span class="marketing-category-arrow">›</span>
+    </a>`).join("");
+    const actions = `<button class="admin-btn primary" data-action="new-coupon">新增优惠券</button>`;
+    root.innerHTML = adminShell("marketing", `${head("营销中心", "按营销类型分区管理，活动、秒杀与拼团各自维护；所有页面共享前台参与数据。", actions)}
+      <div class="stats-row">${stat("优惠券", state.coupons.length, "领取后可在结算页使用")}${stat("主题活动", state.campaigns.length, `${(state.campaignParticipations || []).length} 人次报名`)}${stat("秒杀场次", state.flashSales.length, "支付后扣减活动名额")}${stat("拼团活动", state.groupDeals.length, "成团人数随支付订单增长")}</div>
+      <section class="marketing-category-list">${categoryCards}</section>
+      <div style="margin-top:16px">${panel("优惠券管理", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>优惠券</th><th>已领 / 总量</th><th>状态</th><th>操作</th></tr></thead><tbody>${coupons || `<tr><td colspan="4"><div class="admin-empty">暂无优惠券</div></td></tr>`}</tbody></table></div>`, "领取与核销由前台订单驱动")}</div>`);
+  }
+
+  function renderCampaigns() {
+    state = read();
+    const rows = state.campaigns.map(item => `<tr><td><strong>${esc(item.name)}</strong><small style="display:block;margin-top:4px;color:#999">${esc(item.subtitle)}</small></td><td>${esc(item.startAt)} - ${esc(item.endAt)}</td><td>${statusTag(item.status)}</td><td><button class="text-action" data-action="toggle-campaign" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></td></tr>`).join("");
+    const actions = `<a class="admin-btn" href="admin-marketing.html">返回营销中心</a><button class="admin-btn primary" data-action="new-campaign">新建主题活动</button>`;
+    root.innerHTML = adminShell("marketing-campaigns", `${head("主题活动", "维护活动主题、展示说明、活动周期与用户报名状态。", actions)}
+      <div class="stats-row">${stat("主题活动", state.campaigns.length, "当前活动总数")}${stat("进行中", state.campaigns.filter(item => item.status === "active").length, "用户端可见")}${stat("累计报名", (state.campaignParticipations || []).length, "来自小程序端")}${stat("活动入口", "小程序", "报名后写入共享数据")}</div>
+      ${panel("活动列表", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>活动名称</th><th>活动周期</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows || `<tr><td colspan="4"><div class="admin-empty">暂无主题活动</div></td></tr>`}</tbody></table></div>`, `${state.campaigns.length} 项活动`)}`);
+  }
+
+  function renderFlashSales() {
+    state = read();
+    const rows = state.flashSales.map(item => {
+      const product = state.products.find(productItem => productItem.id === item.productId);
+      return `<tr><td><div class="product-cell"><img src="${esc(product?.image || "")}" alt=""><div><strong>${esc(product?.name || item.productId)}</strong><small>${esc(item.title || "限时秒杀")}</small></div></div></td><td><strong>${money(item.price)}</strong><small class="marketing-old-price">${money(item.originalPrice || product?.price)}</small></td><td>${Number(item.sold || 0)} / ${Number(item.quota || 0)}</td><td>${esc(item.startAt || "—")} - ${esc(item.endAt || "—")}</td><td>${statusTag(item.status)}</td><td><button class="text-action" data-action="toggle-sale" data-kind="flashSales" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></td></tr>`;
+    }).join("");
+    const actions = `<a class="admin-btn" href="admin-marketing.html">返回营销中心</a><button class="admin-btn primary" data-action="new-sale" data-kind="flash">新建秒杀</button>`;
+    root.innerHTML = adminShell("marketing-flash", `${head("限时秒杀", "单独维护秒杀商品、活动价格、库存配额与起止时间。", actions)}
+      <div class="stats-row">${stat("秒杀场次", state.flashSales.length, "累计配置")}${stat("进行中", state.flashSales.filter(item => item.status === "active").length, "小程序可参与")}${stat("活动库存", state.flashSales.reduce((sum, item) => sum + Number(item.quota || 0), 0), "各场次配额合计")}${stat("已售数量", state.flashSales.reduce((sum, item) => sum + Number(item.sold || 0), 0), "支付后更新")}</div>
+      ${panel("秒杀场次", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>商品</th><th>活动价</th><th>已售 / 配额</th><th>活动时段</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows || `<tr><td colspan="6"><div class="admin-empty">暂无秒杀场次</div></td></tr>`}</tbody></table></div>`, `${state.flashSales.length} 场`)}`);
+  }
+
+  function renderGroupDeals() {
+    state = read();
+    const rows = state.groupDeals.map(item => {
+      const product = state.products.find(productItem => productItem.id === item.productId);
+      return `<tr><td><div class="product-cell"><img src="${esc(product?.image || "")}" alt=""><div><strong>${esc(item.title || "好友拼团")}</strong><small>${esc(product?.name || item.productId)}</small></div></div></td><td><strong>${money(item.groupPrice)}</strong><small class="marketing-old-price">${money(item.originalPrice || product?.price)}</small></td><td>${Number(item.joined || 0)} 人</td><td>${Number(item.targetMembers || 0)} 人</td><td>${esc(item.expiresIn || "—")}</td><td>${statusTag(item.status)}</td><td><button class="text-action" data-action="toggle-sale" data-kind="groupDeals" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></td></tr>`;
+    }).join("");
+    const actions = `<a class="admin-btn" href="admin-marketing.html">返回营销中心</a><button class="admin-btn primary" data-action="new-sale" data-kind="group">新建拼团</button>`;
+    root.innerHTML = adminShell("marketing-groups", `${head("好友拼团", "单独维护拼团商品、拼团价格、成团人数与活动时长。", actions)}
+      <div class="stats-row">${stat("拼团活动", state.groupDeals.length, "累计配置")}${stat("进行中", state.groupDeals.filter(item => item.status === "active").length, "小程序可参与")}${stat("累计参与", state.groupDeals.reduce((sum, item) => sum + Number(item.joined || 0), 0), "支付后更新")}${stat("成团规则", "按活动", "活动独立设置目标人数")}</div>
+      ${panel("拼团活动", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>活动 / 商品</th><th>拼团价</th><th>已参与</th><th>成团人数</th><th>活动时长</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows || `<tr><td colspan="7"><div class="admin-empty">暂无拼团活动</div></td></tr>`}</tbody></table></div>`, `${state.groupDeals.length} 项活动`)}`);
+  }
+
+  function renderMarketingPage() {
+    const page = root.dataset.page;
+    if (page === "marketing-campaigns") renderCampaigns();
+    else if (page === "marketing-flash") renderFlashSales();
+    else if (page === "marketing-groups") renderGroupDeals();
+    else renderMarketing();
   }
 
   function renderDistribution() {
@@ -312,10 +400,12 @@
           toast(accepted ? "验收通过，模拟退款和库存恢复已完成" : "已记录验收未通过");
           renderAfterSales();
         });
-      } else if (action === "view-order" || action === "view-track") {
+      } else if (action === "view-order") {
+        location.href = `admin-order-detail.html?id=${encodeURIComponent(id)}&from=${encodeURIComponent(root.dataset.page)}`;
+      } else if (action === "view-track") {
         const order = state.orders.find(item => item.id === id);
         const lines = (order?.tracking || []).map(item => `<div class="list-link"><span>${esc(item.time)}　${esc(item.text)}</span><span>${esc(item.place || "")}</span></div>`).join("");
-        openModal(action === "view-track" ? "物流轨迹" : "订单详情", `<div class="rule-list"><div>订单号：${esc(order?.id || id)}</div><div>状态：${esc(statusText[order?.status] || order?.status || "")}</div><div>实付：${money(order?.total)}</div><div>收货地址：${esc(order?.address?.text || "")}</div></div><div style="margin-top:14px">${lines || "暂无物流信息"}</div>`);
+        openModal("物流轨迹", `<div class="rule-list"><div>订单号：${esc(order?.id || id)}</div><div>状态：${esc(statusText[order?.status] || order?.status || "")}</div><div>实付：${money(order?.total)}</div><div>收货地址：${esc(order?.address?.text || "")}</div></div><div style="margin-top:14px">${lines || "暂无物流信息"}</div>`);
       } else if (action === "toggle-coupon") {
         const coupon = state.coupons.find(item => item.id === id);
         if (coupon) coupon.status = coupon.status === "active" ? "paused" : "active";
@@ -323,11 +413,11 @@
       } else if (action === "toggle-campaign") {
         const campaign = state.campaigns.find(item => item.id === id);
         if (campaign) campaign.status = campaign.status === "active" ? "paused" : "active";
-        write(state); renderMarketing(); toast("活动状态已更新");
+        write(state); renderMarketingPage(); toast("活动状态已更新");
       } else if (action === "toggle-sale") {
         const row = state[control.dataset.kind]?.find(item => item.id === id);
         if (row) row.status = row.status === "active" ? "paused" : "active";
-        write(state); renderMarketing(); toast("营销活动状态已更新");
+        write(state); renderMarketingPage(); toast("营销活动状态已更新");
       } else if (action === "new-campaign") campaignForm();
       else if (action === "new-sale") saleForm(control.dataset.kind);
       else if (action === "new-coupon") couponForm();
@@ -399,7 +489,7 @@
       const endAt = String(form.get("endAt"));
       if (endAt < startAt) return toast("结束日期不能早于开始日期");
       state.campaigns.unshift({ id: `A${Date.now().toString().slice(-8)}`, name, subtitle: String(form.get("subtitle")).trim(), badge: String(form.get("badge")).trim(), type: "campaign", status: "active", startAt, endAt, productIds: [] });
-      write(state); closeModal(); renderMarketing(); toast("主题活动已创建");
+      write(state); closeModal(); renderMarketingPage(); toast("主题活动已创建");
     });
   }
 
@@ -431,7 +521,7 @@
         if (groupPrice >= Number(product.price)) return toast("拼团价需低于商品售价");
         state.groupDeals.unshift({ id, productId: product.id, title: String(form.get("title")).trim(), groupPrice, originalPrice: Number(product.price), targetMembers: Number(form.get("targetMembers")), joined: 0, expiresIn: String(form.get("expiresIn")).trim(), status: "active" });
       }
-      write(state); closeModal(); renderMarketing(); toast("营销活动已创建，小程序端可立即参与");
+      write(state); closeModal(); renderMarketingPage(); toast("营销活动已创建，小程序端可立即参与");
     });
   }
 
@@ -453,7 +543,7 @@
     const page = root.dataset.page;
     if (page === "orders") renderOrders();
     else if (page === "aftersales") renderAfterSales();
-    else if (page === "marketing") renderMarketing();
+    else if (page === "marketing" || page.startsWith("marketing-")) renderMarketingPage();
     else if (page === "distribution") renderDistribution();
     else if (page === "logistics") renderLogistics();
     else if (page === "users") renderUsers();
@@ -464,7 +554,8 @@
   if (page === "overview") renderOverview();
   else if (page === "orders") renderOrders();
   else if (page === "aftersales") renderAfterSales();
-  else if (page === "marketing") renderMarketing();
+  else if (page === "order-detail") renderOrderDetail();
+  else if (page === "marketing" || page.startsWith("marketing-")) renderMarketingPage();
   else if (page === "distribution") renderDistribution();
   else if (page === "logistics") renderLogistics();
   else if (page === "users") renderUsers();
