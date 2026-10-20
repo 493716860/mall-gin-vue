@@ -1,0 +1,40 @@
+{
+  "version": "2.0",
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "title": "示例功能",
+      "status": "TBD",
+      "pageIds": [
+        "PAGE-001"
+      ],
+      "ruleIds": [
+        "BR-001"
+      ],
+      "acceptanceIds": [
+        "AC-001"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "BR-001",
+      "description": "示例业务规则，需业务确认",
+      "status": "TBD"
+    }
+  ],
+  "pages": [
+    {
+      "id": "PAGE-001",
+      "title": "示例页面"
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "AC-001",
+      "given": "满足已确认的前置条件",
+      "when": "用户执行示例操作",
+      "then": "系统显示可观察的操作反馈"
+    }
+  ]
+}

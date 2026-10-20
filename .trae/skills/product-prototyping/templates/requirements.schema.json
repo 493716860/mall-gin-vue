@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Product requirements specification",
+  "type": "object",
+  "required": [
+    "version",
+    "requirements",
+    "rules",
+    "pages",
+    "acceptance"
+  ],
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "status",
+          "pageIds",
+          "ruleIds",
+          "acceptanceIds"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^REQ-"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "confirmed",
+              "TBD",
+              "deprecated"
+            ]
+          },
+          "pageIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ruleIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "acceptanceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "description",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^BR-"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "confirmed",
+              "TBD",
+              "deprecated"
+            ]
+          }
+        }
+      }
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^PAGE-"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "acceptance": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "given",
+          "when",
+          "then"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^AC-"
+          },
+          "given": {
+            "type": "string"
+          },
+          "when": {
+            "type": "string"
+          },
+          "then": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

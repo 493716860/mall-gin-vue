@@ -1,0 +1,2 @@
+# HTTP、认证与错误处理
+统一 /api/v1/mini 请求入口，响应 {code,message,data,request_id}，分页 {list,total,page,page_size}；API 函数与 DTO 必须有明确 TypeScript 类型。Alova 或自封装 request 尚未确定，不允许建立两套并行 HTTP 框架。统一 Base URL、环境配置、请求超时、请求头、Token 注入、网络/HTTP/业务错误处理与请求取消。并发 401 只能触发一次受控登录流程；Token 刷新仅在后端契约明确提供时实现。403 不自动重试，非幂等写请求不得盲目重试，幂等请求重试须有上限。使用请求序号或取消机制避免旧响应覆盖新状态。禁止在源码、日志保存 AppSecret、商户密钥、Token。路由守卫不代替后端鉴权；特殊上传、下载、支付协议不强套 JSON Envelope。
