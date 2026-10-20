@@ -1,0 +1,122 @@
+openapi: 3.1.0
+info:
+  title: 示例订单创建 API（仅演示技术设计）
+  version: 1.0.0
+paths:
+  /api/v1/mini/orders:
+    post:
+      operationId: createExampleOrder
+      summary: 创建示例订单
+      description: 'API-ORDER-001，关联 REQ-ORDER-001；示例假设，不代表真实商城业务已批准'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+          description: 同一用户同一操作的幂等键
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderSuccess'
+        '400':
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: 未登录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: 幂等键冲突或资源状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          description: 业务前置条件不满足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '500':
+          description: 系统错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    CreateOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [sku_id, quantity]
+      properties:
+        sku_id:
+          type: string
+          description: SKU 主键ID，字符串形式避免 JS 精度问题
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 99
+          description: 购买数量（示例上限，真实规则待确认）
+    OrderData:
+      type: object
+      required: [order_id, status, payable_amount]
+      properties:
+        order_id:
+          type: string
+        status:
+          type: string
+          enum: [PENDING_PAYMENT]
+        payable_amount:
+          type: integer
+          format: int64
+          description: 应付金额，单位分；实际金额由后端计算
+    OrderSuccess:
+      type: object
+      required: [code, message, data, request_id]
+      properties:
+        code:
+          type: string
+          const: SUCCESS
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/OrderData'
+        request_id:
+          type: string
+    ApiError:
+      type: object
+      required: [code, message, data, request_id]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        data:
+          type: 'null'
+        request_id:
+          type: string

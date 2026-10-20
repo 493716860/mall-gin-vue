@@ -1,0 +1,88 @@
+openapi: 3.1.0
+info:
+  title: 示例后台记录 API
+  version: 1.0.0
+servers:
+  - url: /
+paths:
+  /api/v1/admin/sample-records/{id}:
+    get:
+      operationId: getSampleRecord
+      summary: 查询示例记录
+      description: 'API-SAMPLE-001，来源 REQ-001；示例契约，非实际业务接口'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 记录主键ID（字符串形式，避免 JS 大整数精度丢失）
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SampleResponse'
+        '401':
+          description: 未登录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 记录不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    SampleRecord:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          description: 记录主键ID
+        name:
+          type: string
+          description: 记录名称
+    SampleResponse:
+      type: object
+      required: [code, message, data, request_id]
+      properties:
+        code:
+          type: string
+          const: SUCCESS
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/SampleRecord'
+        request_id:
+          type: string
+    ErrorResponse:
+      type: object
+      required: [code, message, data, request_id]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        data:
+          type: 'null'
+        request_id:
+          type: string
