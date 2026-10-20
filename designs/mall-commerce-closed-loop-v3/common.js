@@ -105,8 +105,8 @@
     </a>`;
   }
 
-  function refreshMessageEntries() {
-    const unread = unreadMessageCount();
+  function refreshMessageEntries(event) {
+    const unread = unreadMessageCount(event?.detail || undefined);
     document.querySelectorAll(".mini-message-entry").forEach(entry => {
       const badge = entry.querySelector(".mini-message-badge");
       if (!badge) return;

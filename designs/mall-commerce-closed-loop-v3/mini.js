@@ -1146,7 +1146,7 @@
             return `<li class="detail-top10-item ${item.id === product.id ? "current" : ""}">
               <button type="button" class="detail-top10-link" data-action="detail" data-id="${esc(item.id)}">
                 <span class="detail-top10-rank rank-${index + 1}">${String(index + 1).padStart(2, "0")}</span>
-                <img src="${esc(item.image)}" alt="">
+                <img loading="lazy" src="${esc(item.image)}" alt="">
                 <span class="detail-top10-copy"><strong>${esc(item.name)}</strong><small>已售 ${Number(item.salesCount || 0).toLocaleString()} 件</small></span>
                 <span class="detail-top10-price">${money(itemPrice)}</span>
                 ${item.id === product.id ? `<span class="detail-top10-current">当前</span>` : ""}
@@ -1159,7 +1159,7 @@
         <section class="detail-card detail-reviews" id="detail-reviews">
           <div class="detail-section-title"><h2>用户评价</h2><a href="#detail-reviews">好评率 98%　›</a></div>
           <div class="detail-rating"><strong>${Number(product.rating || 4.8).toFixed(1)}</strong><span>★★★★★</span><small>${Number(product.reviewCount || 0).toLocaleString()} 条评价</small></div>
-          ${reviews.slice(0, 3).map(review => `<article class="detail-review"><div class="detail-review-head"><strong>${esc(review.name || "商城用户")}</strong><span>${esc(review.date || "")}</span></div><div class="detail-stars">${"★".repeat(Math.max(1, Math.min(5, Number(review.rating || 5)))).padEnd(5, "☆")}</div><p>${esc(review.text || "用户已提交评分")}</p>${review.images?.length ? `<div class="detail-review-images">${review.images.map(src => `<img src="${esc(src)}" alt="用户评价图片">`).join("")}</div>` : ""}${review.reply?.text ? `<div class="detail-review-reply"><strong>${esc(review.reply.operator || "商家回复")}</strong><span>${esc(review.reply.text)}</span></div>` : ""}</article>`).join("")}
+          ${reviews.slice(0, 3).map(review => `<article class="detail-review"><div class="detail-review-head"><strong>${esc(review.name || "商城用户")}</strong><span>${esc(review.date || "")}</span></div><div class="detail-stars">${"★".repeat(Math.max(1, Math.min(5, Number(review.rating || 5)))).padEnd(5, "☆")}</div><p>${esc(review.text || "用户已提交评分")}</p>${review.images?.length ? `<div class="detail-review-images">${review.images.map(src => `<img loading="lazy" src="${esc(src)}" alt="用户评价图片">`).join("")}</div>` : ""}${review.reply?.text ? `<div class="detail-review-reply"><strong>${esc(review.reply.operator || "商家回复")}</strong><span>${esc(review.reply.text)}</span></div>` : ""}</article>`).join("")}
         </section>
         <section class="detail-description" id="detail-description">
           <div class="detail-description-title"><span></span><strong>商品详情</strong><span></span></div>
@@ -1167,7 +1167,7 @@
           ${(product.detailImages || []).map((src, index) => `<img loading="lazy" src="${esc(src)}" alt="${esc(product.name)} 商品详情图 ${index + 1}">`).join("")}
           <div class="detail-description-foot">产品参数与服务说明以实际商品包装及售后政策为准</div>
         </section>
-        <section class="detail-related" id="detail-related"><div class="detail-section-title"><h2>为你推荐</h2><span>更多好物</span></div><div class="detail-related-grid">${recommendations.map(item => `<button type="button" class="detail-related-card" data-action="detail" data-id="${esc(item.id)}"><img src="${esc(item.image)}" alt="${esc(item.name)}"><strong>${esc(item.name)}</strong><span>${money(Math.min(...(item.skus || []).map(sku => Number(sku.price)).filter(Number.isFinite), Number(item.price || 0)))}</span></button>`).join("")}</div></section>
+        <section class="detail-related" id="detail-related"><div class="detail-section-title"><h2>为你推荐</h2><span>更多好物</span></div><div class="detail-related-grid">${recommendations.map(item => `<button type="button" class="detail-related-card" data-action="detail" data-id="${esc(item.id)}"><img loading="lazy" src="${esc(item.image)}" alt="${esc(item.name)}"><strong>${esc(item.name)}</strong><span>${money(Math.min(...(item.skus || []).map(sku => Number(sku.price)).filter(Number.isFinite), Number(item.price || 0)))}</span></button>`).join("")}</div></section>
       </div>`,
       bottom: `<div class="detail-buybar"><a href="mini-cart.html" class="detail-cart-link">${icon("cart")}<span>购物车</span></a><button type="button" class="detail-add-btn" data-action="detail-add" ${Number(currentSku.stock) <= 0 ? "disabled" : ""}>加入购物车</button><button type="button" class="detail-buy-btn" data-action="detail-buy" ${Number(currentSku.stock) <= 0 ? "disabled" : ""}>立即购买</button></div>`
     });
@@ -1178,9 +1178,74 @@
       const delta = event.changedTouches[0].clientX - startX;
       if (Math.abs(delta) > 28) {
         detailGalleryIndex = (detailGalleryIndex + (delta < 0 ? 1 : gallery.length - 1)) % gallery.length;
-        renderProductDetail();
+        updateProductDetailControls();
       }
     }, { passive: true });
+  }
+
+  function updateProductDetailControls() {
+    const product = productById(params.get("id"));
+    const currentSku = product?.skus?.find(sku => sku.id === detailSkuId);
+    if (!product || !currentSku) return;
+    detailQty = Math.min(Math.max(1, detailQty), Math.max(1, Number(currentSku.stock || 0)));
+    const productGallery = product.gallery?.length ? product.gallery : [product.image];
+    const gallery = currentSku.image && currentSku.image !== productGallery[0]
+      ? [currentSku.image, ...productGallery.filter(src => src !== currentSku.image)]
+      : productGallery;
+    detailGalleryIndex = Math.min(detailGalleryIndex, gallery.length - 1);
+    const galleryImg = gallery[detailGalleryIndex] || product.image;
+    const galleryImage = root.querySelector(".detail-main-image");
+    if (galleryImage) galleryImage.src = galleryImg;
+    const galleryCount = root.querySelector(".detail-image-count");
+    if (galleryCount) galleryCount.textContent = `${detailGalleryIndex + 1} / ${gallery.length}`;
+    const galleryThumbs = root.querySelector(".detail-thumbs");
+    if (galleryThumbs) galleryThumbs.innerHTML = gallery.map((src, index) =>
+      `<button class="detail-thumb ${index === detailGalleryIndex ? "active" : ""}" type="button" data-action="gallery-image" data-index="${index}" aria-label="查看第 ${index + 1} 张商品图片"><img src="${esc(src)}" alt=""></button>`
+    ).join("");
+
+    const memberPrice = skuMemberPrice(currentSku);
+    const priceLine = root.querySelector(".detail-price-line");
+    if (priceLine) {
+      const rank = priceLine.querySelector(".detail-rank")?.textContent || "";
+      priceLine.innerHTML = `<strong>${money(memberPrice ?? currentSku.price)}</strong>${memberPrice !== null ? `<span class="tag recommend">${esc(currentTier()?.name || "会员")}专享</span>` : ""}${Number(currentSku.originalPrice || product.original) > Number(currentSku.price) ? `<del>${money(currentSku.originalPrice || product.original)}</del>` : ""}<span class="detail-rank">${esc(rank)}</span>`;
+    }
+    const salesLine = root.querySelector(".detail-sales-line");
+    if (salesLine?.children[1]) salesLine.children[1].textContent = `剩余库存 ${Number(currentSku.stock || 0)} 件`;
+    const specLabel = root.querySelector(".detail-card .detail-row-head > span");
+    if (specLabel) specLabel.textContent = currentSku.label || "标准版";
+    const skuSpecs = sku => sku.specs?.length ? sku.specs : [{ name: "版本", value: "标准版" }];
+    const specNames = [...new Set((product.skus || []).filter(sku => sku.status === "on").flatMap(sku =>
+      skuSpecs(sku).map(spec => spec.name)
+    ))];
+    const selectedSpecs = Object.fromEntries(skuSpecs(currentSku).map(spec => [spec.name, spec.value]));
+    const skus = (product.skus || []).filter(sku => sku.status === "on");
+    const specGroups = root.querySelector(".detail-spec-groups");
+    if (specGroups) specGroups.innerHTML = specNames.map(specName => {
+      const values = [...new Set(skus.flatMap(sku => skuSpecs(sku).filter(spec => spec.name === specName).map(spec => spec.value)))];
+      return `<div class="detail-spec-group"><strong>${esc(specName)}</strong><div class="detail-sku-list">${values.map(value => {
+        const candidate = skus.find(sku => skuSpecs(sku).some(spec => spec.name === specName && spec.value === value)
+          && skuSpecs(sku).every(spec => spec.name === specName || selectedSpecs[spec.name] === spec.value));
+        const soldOut = !candidate || Number(candidate.stock) <= 0;
+        return `<button type="button" class="detail-sku ${selectedSpecs[specName] === value ? "active" : ""}" data-action="select-spec" data-spec-name="${esc(specName)}" data-spec-value="${esc(value)}" ${soldOut ? "disabled" : ""}>${esc(value)}${soldOut ? " · 售罄" : ""}</button>`;
+      }).join("")}</div></div>`;
+    }).join("");
+    const selectedStock = root.querySelector(".detail-selected-stock");
+    if (selectedStock) selectedStock.textContent = `当前规格剩余 ${Number(currentSku.stock || 0)} 件`;
+    const quantity = root.querySelector(".detail-quantity output");
+    if (quantity) quantity.textContent = String(detailQty);
+
+    const selectedAddress = state.selectedAddress || state.addresses?.find(item => item.isDefault) || state.addresses?.[0];
+    const shipping = window.MallOps.quoteShipping([{ productId: product.id, price: currentSku.price, qty: detailQty }], selectedAddress, state);
+    const addressText = root.querySelector(".detail-address small");
+    if (addressText) {
+      const addressLine = selectedAddress
+        ? `${selectedAddress.province || ""}${selectedAddress.city || ""}${selectedAddress.district || ""}${selectedAddress.detail || ""}`
+        : "请选择收货地址";
+      addressText.textContent = `${addressLine}${selectedAddress ? `　${selectedAddress.name || ""} ${selectedAddress.phone || ""}` : ""} · ${shipping.fee ? `运费 ${money(shipping.fee)}` : "包邮"}`;
+    }
+    root.querySelectorAll("[data-action='detail-add'], [data-action='detail-buy']").forEach(button => {
+      button.disabled = Number(currentSku.stock) <= 0;
+    });
   }
 
   function chooseDeliveryAddress() {
@@ -1270,11 +1335,11 @@
       closeModal();
     } else if (action === "gallery-image") {
       detailGalleryIndex = Number(control.dataset.index || 0);
-      renderProductDetail();
+      updateProductDetailControls();
     } else if (action === "select-sku") {
       detailSkuId = control.dataset.skuId;
       detailQty = 1;
-      renderProductDetail();
+      updateProductDetailControls();
     } else if (action === "select-spec") {
       const product = productById(params.get("id"));
       const selectedSku = product?.skus?.find(item => item.id === detailSkuId);
@@ -1288,12 +1353,12 @@
       detailSkuId = nextSku.id;
       detailQty = 1;
       detailGalleryIndex = 0;
-      renderProductDetail();
+      updateProductDetailControls();
     } else if (action === "detail-qty") {
       const product = productById(params.get("id"));
       const sku = product?.skus?.find(item => item.id === detailSkuId);
       detailQty = Math.min(Number(sku?.stock || 1), Math.max(1, detailQty + Number(control.dataset.delta)));
-      renderProductDetail();
+      updateProductDetailControls();
     } else if (action === "choose-address") {
       chooseDeliveryAddress();
     } else if (action === "detail-add") {

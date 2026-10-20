@@ -527,7 +527,6 @@
     }
   });
 
-  window.addEventListener("mall:data-updated", () => { state = read(); render(); });
   window.addEventListener("storage", event => { if (event.key === window.MallData.KEY) render(); });
   function render() {
     state = read();

@@ -6,6 +6,7 @@
   let state = read();
   let orderFilter = "all";
   let orderQuery = "";
+  let orderSearchTimer = 0;
   const shippingProvinces = [
     "北京市", "天津市", "上海市", "重庆市", "河北省", "山西省", "辽宁省", "吉林省", "黑龙江省", "江苏省",
     "浙江省", "安徽省", "福建省", "江西省", "山东省", "河南省", "湖北省", "湖南省", "广东省", "海南省",
@@ -93,7 +94,17 @@
     root.innerHTML = adminShell("orders", `${head("订单管理", "处理订单查询、关闭与发货，用户端同步显示最新订单状态。")}
       <div class="stats-row">${stat("全部订单", state.orders.length, "包含演示状态订单")}${stat("待付款", state.orders.filter(item => item.status === "pending_payment").length, "等待用户完成支付")}${stat("待发货", state.orders.filter(item => item.status === "to_ship").length, "已支付待履约")}${stat("运输中", state.orders.filter(item => item.status === "to_receive").length, "用户可查看物流")}</div>
       ${panel("订单列表", `<div class="panel-body"><div class="filters"><label class="admin-search"><input id="order-search" type="search" placeholder="订单号 / 收货人 / 商品" value="${esc(orderQuery)}"></label><span class="inline-help">发货后前台订单状态和物流轨迹同步更新</span></div><div class="toolbar-row" style="margin-top:12px">${tabs.map(([key, label]) => `<button class="filter-chip ${orderFilter === key ? "active" : ""}" data-action="order-filter" data-value="${key}">${label}</button>`).join("")}</div></div>${table}`, `${orders.length} 笔订单`)}`);
-    root.querySelector("#order-search")?.addEventListener("input", event => { orderQuery = event.target.value; renderOrders(); const input = root.querySelector("#order-search"); input?.focus(); input?.setSelectionRange(orderQuery.length, orderQuery.length); });
+    root.querySelector("#order-search")?.addEventListener("input", event => {
+      orderQuery = event.target.value;
+      const cursor = event.target.selectionStart;
+      clearTimeout(orderSearchTimer);
+      orderSearchTimer = window.setTimeout(() => {
+        renderOrders();
+        const input = root.querySelector("#order-search");
+        input?.focus();
+        input?.setSelectionRange(cursor, cursor);
+      }, 140);
+    });
   }
 
   function renderAfterSales() {
@@ -435,18 +446,6 @@
       write(state); closeModal(); renderDistribution(); toast("佣金规则已保存");
     });
   }
-
-  window.addEventListener("mall:data-updated", () => {
-    state = read();
-    const page = root.dataset.page;
-    if (page === "orders") renderOrders();
-    else if (page === "aftersales") renderAfterSales();
-    else if (page === "marketing") renderMarketing();
-    else if (page === "distribution") renderDistribution();
-    else if (page === "logistics") renderLogistics();
-    else if (page === "users") renderUsers();
-    else if (page === "overview") renderOverview();
-  });
 
   window.addEventListener("storage", event => {
     if (event.key !== window.MallData.KEY) return;
