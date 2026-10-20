@@ -123,24 +123,25 @@
 
   function renderPromotions() {
     state = read();
-    const coupons = state.coupons.filter(item => item.status === "active").map(coupon => {
+    const inWindow = item => window.MallOps.isWithinTimeWindow(item);
+    const coupons = state.coupons.filter(item => item.status === "active" && inWindow(item)).map(coupon => {
       const claimed = state.claimedCoupons.some(item => (item.couponId || item.id) === coupon.id);
       return `<article class="white-card section" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px">
-        <div><strong style="color:var(--orange);font-size:16px">${esc(coupon.name)}</strong><div class="cart-spec" style="margin-top:5px">有效期 ${coupon.validDays} 天 · 剩余 ${coupon.stock}</div></div>
+        <div><strong style="color:var(--orange);font-size:16px">${esc(coupon.name)}</strong><div class="cart-spec" style="margin-top:5px">领取后 ${coupon.validDays} 天 · 剩余 ${coupon.stock}</div><div class="cart-spec" style="margin-top:4px">${esc(coupon.startAt)}–${esc(coupon.endAt)}</div></div>
         <button class="${claimed ? "secondary-btn" : "primary-btn small"}" data-action="claim" data-id="${esc(coupon.id)}" ${claimed ? "disabled" : ""}>${claimed ? "已领取" : "立即领取"}</button>
       </article>`;
     }).join("");
-    const campaigns = state.campaigns.filter(item => item.status === "active").map(item => {
+    const campaigns = state.campaigns.filter(item => item.status === "active" && inWindow(item)).map(item => {
       const joined = (state.campaignParticipations || []).some(row => row.campaignId === item.id && row.userId === state.user.id);
-      return `<article class="white-card section" style="padding:13px"><div class="hero-kicker">${esc(item.badge || "限时活动")}</div><strong style="display:block;margin-top:5px;font-size:14px">${esc(item.name)}</strong><p class="cart-spec" style="line-height:1.6">${esc(item.subtitle)}</p><button class="${joined ? "secondary-btn" : "primary-btn small"}" data-action="campaign" data-id="${esc(item.id)}">${joined ? "已报名" : "立即报名"}</button></article>`;
+      return `<article class="white-card section" style="padding:13px"><div class="hero-kicker">${esc(item.badge || "限时活动")}</div><strong style="display:block;margin-top:5px;font-size:14px">${esc(item.name)}</strong><p class="cart-spec" style="line-height:1.6">${esc(item.subtitle)}</p><div class="cart-spec">${esc(item.startAt)}–${esc(item.endAt)}</div><button class="${joined ? "secondary-btn" : "primary-btn small"}" data-action="campaign" data-id="${esc(item.id)}">${joined ? "已报名" : "立即报名"}</button></article>`;
     }).join("");
-    const flashes = state.flashSales.filter(sale => sale.status === "active" && Number(sale.sold) < Number(sale.quota)).map(sale => {
+    const flashes = state.flashSales.filter(sale => sale.status === "active" && inWindow(sale) && Number(sale.sold) < Number(sale.quota)).map(sale => {
       const product = state.products.find(item => item.id === sale.productId);
       return `<article class="white-card section" style="padding:13px"><div style="display:flex;justify-content:space-between;align-items:center"><div><span class="tag top">限时秒杀</span><strong style="display:block;margin-top:7px">${esc(product?.name || "限时商品")}</strong></div><strong class="price">${money(sale.price)}</strong></div><div class="cart-spec" style="margin:8px 0">原价 ${money(sale.originalPrice)} · 已售 ${sale.sold}/${sale.quota} · ${esc(sale.startAt)}–${esc(sale.endAt)}</div><button class="primary-btn small" data-action="flash" data-id="${esc(sale.id)}">立即抢购</button></article>`;
     }).join("");
-    const groups = state.groupDeals.filter(deal => deal.status === "active").map(deal => {
+    const groups = state.groupDeals.filter(deal => deal.status === "active" && inWindow(deal)).map(deal => {
       const product = state.products.find(item => item.id === deal.productId);
-      return `<article class="white-card section" style="padding:13px"><div style="display:flex;justify-content:space-between;align-items:center"><div><span class="tag recommend">好友拼团</span><strong style="display:block;margin-top:7px">${esc(product?.name || deal.title)}</strong></div><strong class="price">${money(deal.groupPrice)}</strong></div><div class="cart-spec" style="margin:8px 0">${Number(deal.targetMembers) - Number(deal.joined || 0)} 人成团 · 已参与 ${deal.joined || 0} 人 · ${esc(deal.expiresIn || "限时")}</div><button class="primary-btn small" data-action="group" data-id="${esc(deal.id)}">发起拼团</button></article>`;
+      return `<article class="white-card section" style="padding:13px"><div style="display:flex;justify-content:space-between;align-items:center"><div><span class="tag recommend">好友拼团</span><strong style="display:block;margin-top:7px">${esc(product?.name || deal.title)}</strong></div><strong class="price">${money(deal.groupPrice)}</strong></div><div class="cart-spec" style="margin:8px 0">${Number(deal.targetMembers) - Number(deal.joined || 0)} 人成团 · 已参与 ${deal.joined || 0} 人 · ${esc(deal.startAt)}–${esc(deal.endAt)}</div><button class="primary-btn small" data-action="group" data-id="${esc(deal.id)}">发起拼团</button></article>`;
     }).join("");
     shell("营销中心", `<div class="page-hero-title" style="font-size:18px">好礼与限时活动</div><p class="page-subtitle">活动由商城运营配置，参与与订单状态同步</p>
       <section class="section"><div class="section-head"><h2>优惠券</h2><a href="mini-coupons.html">我的券 ${icon("chevron")}</a></div>${coupons || `<div class="white-card">暂无可领取优惠券</div>`}</section>
@@ -157,11 +158,18 @@
       const now = new Date();
       const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
       const expired = claim.expiresAt && today > claim.expiresAt;
-      const status = expired ? "已过期" : ({ available: "可使用", used: "已使用", expired: "已过期" }[claim.status] || claim.status);
+      const notStarted = claim.validFrom && today < claim.validFrom;
+      const templateActive = coupon.status === "active" && window.MallOps.isWithinTimeWindow(coupon);
+      const usable = claim.status === "available" && !expired && !notStarted && templateActive;
+      const status = claim.status === "used" ? "已使用"
+        : claim.status === "available" && expired ? "已过期"
+          : claim.status === "available" && !templateActive ? "活动已结束"
+            : claim.status === "available" && notStarted ? "未生效"
+              : ({ available: "可使用", expired: "已过期" }[claim.status] || claim.status);
       const validity = claim.expiresAt
         ? `${claim.validFrom || claim.receivedAt || "已领取"} 至 ${claim.expiresAt}`
         : `领取后 ${coupon.validDays} 天`;
-      return `<article class="white-card section" style="display:flex;align-items:center;justify-content:space-between;padding:14px"><div><strong style="color:var(--orange);font-size:15px">${esc(coupon.name)}${claim.source === "birthday" ? " · 生日礼券" : ""}</strong><div class="cart-spec" style="margin-top:5px">${claim.receivedAt || "已领取"} · 有效期 ${esc(validity)}</div></div><span class="tag ${claim.status === "available" && !expired ? "top" : ""}">${status}</span></article>`;
+      return `<article class="white-card section" style="display:flex;align-items:center;justify-content:space-between;padding:14px"><div><strong style="color:var(--orange);font-size:15px">${esc(coupon.name)}${claim.source === "birthday" ? " · 生日礼券" : ""}</strong><div class="cart-spec" style="margin-top:5px">${claim.receivedAt || "已领取"} · 有效期 ${esc(validity)}</div></div><span class="tag ${usable ? "top" : ""}">${status}</span></article>`;
     }).join("");
     shell("我的优惠券", `<a class="head-link" href="mini-promotions.html">去领券 ${icon("chevron")}</a>${coupons || `<div class="empty-state"><strong>还没有优惠券</strong><p>去营销中心领取优惠</p><a class="primary-btn small" href="mini-promotions.html">去领券</a></div>`}`);
   }

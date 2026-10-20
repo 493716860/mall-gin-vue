@@ -8,8 +8,26 @@
   let productQuery = "";
   let productCategory = "all";
   let productStatus = "all";
+  let productMinPrice = "";
+  let productMaxPrice = "";
+  let productMinStock = "";
+  let productMaxStock = "";
+  let productPage = 1;
   let reviewQuery = "";
   let reviewFilter = "all";
+  let reviewProductFilter = "all";
+  let reviewDateFilter = "";
+  let reviewPage = 1;
+  let legalQuery = "";
+  let legalCategory = "all";
+  let legalStatus = "all";
+  let legalPage = 1;
+  let bannerQuery = "";
+  let bannerEnabledFilter = "all";
+  let bannerPage = 1;
+  let zoneQuery = "";
+  let zoneEnabledFilter = "all";
+  let zonePage = 1;
   const view = new URLSearchParams(location.search).get("view") || "";
   const tagNames = { top: "畅销", new: "新品", recommend: "推荐" };
   const categoryName = (parent, subcat) => {
@@ -25,6 +43,15 @@
     return `<div class="stat-card"><div class="stat-label">${label}</div><div class="stat-number">${value}</div><div class="stat-foot">${trend ? `<em>${trend}</em>　` : ""}${note}</div></div>`;
   }
 
+  function rerenderFilter(render, selector, event) {
+    const start = event.target.selectionStart;
+    const end = event.target.selectionEnd;
+    render();
+    const input = root.querySelector(selector);
+    input?.focus();
+    if (input && typeof start === "number" && typeof end === "number") input.setSelectionRange(start, end);
+  }
+
   function tagButtons(product) {
     return `<div class="tag-control">${Object.entries(tagNames).map(([key, name]) =>
       `<button type="button" class="tag-toggle ${key} ${(product.tags || []).includes(key) ? "active" : ""}" data-action="toggle-tag" data-id="${esc(product.id)}" data-tag="${key}">${name}</button>`
@@ -36,11 +63,18 @@
       const qMatch = !productQuery || `${product.name} ${product.subtitle}`.toLowerCase().includes(productQuery.toLowerCase());
       const cMatch = productCategory === "all" || product.parent === productCategory;
       const sMatch = productStatus === "all" || product.status === productStatus;
-      return qMatch && cMatch && sMatch;
+      const minPriceMatch = productMinPrice === "" || Number(product.price) >= Number(productMinPrice);
+      const maxPriceMatch = productMaxPrice === "" || Number(product.price) <= Number(productMaxPrice);
+      const stock = Number(product.stock || 0);
+      const minStockMatch = productMinStock === "" || stock >= Number(productMinStock);
+      const maxStockMatch = productMaxStock === "" || stock <= Number(productMaxStock);
+      return qMatch && cMatch && sMatch && minPriceMatch && maxPriceMatch && minStockMatch && maxStockMatch;
     });
     const tbody = root.querySelector("#product-rows");
     if (!tbody) return;
-    tbody.innerHTML = rows.length ? rows.map(product => `<tr>
+    const pagination = window.MallUI.adminPage(rows, productPage, 5, "products");
+    productPage = pagination.page;
+    tbody.innerHTML = pagination.rows.length ? pagination.rows.map(product => `<tr>
       <td><div class="product-cell"><img src="${product.image}" alt="${esc(product.name)}"><div><strong>${esc(product.name)}</strong><small>${esc(product.subtitle || "")}</small><small class="product-spu-id">SPU ${esc(product.spuId || product.id)}</small></div></div></td>
       <td><strong style="color:#e96219">${(product.skus || []).length > 1 ? `¥${Math.min(...product.skus.map(sku => Number(sku.price))).toFixed(2)} 起` : money(product.price)}</strong><div style="margin-top:3px;color:#aaa;text-decoration:line-through;font-size:9px">${product.original ? money(product.original) : "—"}</div></td>
       <td>${Number(product.stock).toLocaleString()}</td>
@@ -51,6 +85,7 @@
       <td><div class="row-actions"><button class="text-action" data-action="edit-product" data-id="${esc(product.id)}">编辑 SPU / SKU</button><button class="text-action" data-action="preview-product" data-id="${esc(product.id)}">预览详情</button><button class="text-action" data-action="toggle-status" data-id="${esc(product.id)}">${product.status === "on" ? "下架" : "上架"}</button></div></td>
     </tr>`).join("") : `<tr><td colspan="8"><div class="admin-empty">没有符合条件的商品</div></td></tr>`;
     root.querySelector("#visible-count").textContent = `${rows.length} 件商品`;
+    root.querySelector("#product-pagination").innerHTML = pagination.html;
   }
 
   function renderProducts() {
@@ -70,23 +105,37 @@
         <div class="panel-head"><span class="panel-title">SPU 商品列表</span><span class="panel-note" id="visible-count"></span></div>
         <div class="panel-body" style="padding-bottom:12px">
           <div class="filters">
-            <label class="admin-search">${icon("search")}<input id="product-search" type="search" placeholder="搜索商品名称"></label>
-            <select class="admin-select" id="product-category"><option value="all">全部分类</option>${state.zones.map(zone => `<option value="${esc(zone.id)}">${esc(zone.name)}</option>`).join("")}</select>
-            <select class="admin-select" id="product-status"><option value="all">全部状态</option><option value="on">销售中</option><option value="off">已下架</option></select>
+            <label class="admin-search">${icon("search")}<input id="product-search" type="search" value="${esc(productQuery)}" placeholder="搜索商品名称"></label>
+            <select class="admin-select" id="product-category"><option value="all">全部分类</option>${state.zones.map(zone => `<option value="${esc(zone.id)}" ${productCategory === zone.id ? "selected" : ""}>${esc(zone.name)}</option>`).join("")}</select>
+            <select class="admin-select" id="product-status"><option value="all" ${productStatus === "all" ? "selected" : ""}>全部状态</option><option value="on" ${productStatus === "on" ? "selected" : ""}>销售中</option><option value="off" ${productStatus === "off" ? "selected" : ""}>已下架</option></select>
+            <input class="admin-select" id="product-min-price" type="number" min="0" value="${esc(productMinPrice)}" placeholder="最低售价">
+            <input class="admin-select" id="product-max-price" type="number" min="0" value="${esc(productMaxPrice)}" placeholder="最高售价">
+            <input class="admin-select" id="product-min-stock" type="number" min="0" value="${esc(productMinStock)}" placeholder="最低库存">
+            <input class="admin-select" id="product-max-stock" type="number" min="0" value="${esc(productMaxStock)}" placeholder="最高库存">
             <span class="inline-help" style="margin-left:auto">点击标签即可切换首页推荐规则</span>
           </div>
         </div>
         <div class="table-wrap"><table class="admin-table"><thead><tr><th>SPU 商品</th><th>售价</th><th>总库存</th><th>SKU</th><th>分类</th><th>展示标签</th><th>状态</th><th>操作</th></tr></thead><tbody id="product-rows"></tbody></table></div>
-        <div class="pagination"><span>SPU 维护商品内容；SKU 独立维护规格、价格与库存</span><div class="page-numbers"><button class="page-num active">1</button><button class="page-num">2</button><button class="page-num">›</button></div></div>
+        <div id="product-pagination"></div>
       </section>`);
     renderProductRows();
-    root.querySelector("#product-search").addEventListener("input", event => { productQuery = event.target.value; renderProductRows(); });
-    root.querySelector("#product-category").addEventListener("change", event => { productCategory = event.target.value; renderProductRows(); });
-    root.querySelector("#product-status").addEventListener("change", event => { productStatus = event.target.value; renderProductRows(); });
+    root.querySelector("#product-search").addEventListener("input", event => { productQuery = event.target.value; productPage = 1; renderProductRows(); });
+    root.querySelector("#product-category").addEventListener("change", event => { productCategory = event.target.value; productPage = 1; renderProductRows(); });
+    root.querySelector("#product-status").addEventListener("change", event => { productStatus = event.target.value; productPage = 1; renderProductRows(); });
+    [["product-min-price", "productMinPrice"], ["product-max-price", "productMaxPrice"], ["product-min-stock", "productMinStock"], ["product-max-stock", "productMaxStock"]].forEach(([id, key]) => {
+      root.querySelector(`#${id}`).addEventListener("input", event => {
+        if (key === "productMinPrice") productMinPrice = event.target.value;
+        else if (key === "productMaxPrice") productMaxPrice = event.target.value;
+        else if (key === "productMinStock") productMinStock = event.target.value;
+        else productMaxStock = event.target.value;
+        productPage = 1;
+        renderProductRows();
+      });
+    });
   }
 
   function allReviews() {
-    return state.products.flatMap(product => (product.reviews || []).map(review => ({ ...review, productName: product.name })));
+    return state.products.flatMap(product => (product.reviews || []).map(review => ({ ...review, productId: product.id, productName: product.name })));
   }
 
   function reviewImagesMarkup(images, className) {
@@ -103,12 +152,17 @@
     const reviews = allReviews().filter(review => {
       const queryMatch = !reviewQuery || `${review.productName} ${review.name} ${review.text} ${review.orderId || ""}`.toLowerCase().includes(reviewQuery.toLowerCase());
       const replyMatch = reviewFilter === "all" || (reviewFilter === "replied" ? Boolean(review.reply?.text) : !review.reply?.text);
-      return queryMatch && replyMatch && review.status !== "hidden";
+      const productMatch = reviewProductFilter === "all" || review.productId === reviewProductFilter;
+      const reviewDate = String(review.date || review.createdAt || "").slice(0, 10);
+      const dateMatch = !reviewDateFilter || reviewDate === reviewDateFilter;
+      return queryMatch && replyMatch && productMatch && dateMatch && review.status !== "hidden";
     });
     const total = allReviews();
     const waiting = total.filter(review => !review.reply?.text).length;
     const replied = total.length - waiting;
-    const rows = reviews.map(review => `<tr>
+    const pagination = window.MallUI.adminPage(reviews, reviewPage, 5, "reviews");
+    reviewPage = pagination.page;
+    const rows = pagination.rows.map(review => `<tr>
       <td><strong>${esc(review.productName)}</strong><small class="review-meta">${esc(review.skuLabel || "商品评价")}</small></td>
       <td><strong>${esc(review.name || "商城用户")}</strong><small class="review-meta">${esc(review.orderId || "演示评价")}</small></td>
       <td><span class="review-admin-stars">${"★".repeat(Math.max(1, Math.min(5, Number(review.rating || 5))))}</span><small class="review-meta">${Number(review.rating || 5)} 分</small></td>
@@ -123,18 +177,27 @@
         ${stat("评价总数", total.length, "包含小程序用户评价")}
         ${stat("待回复", waiting, "及时回应用户问题")}
         ${stat("已回复", replied, "回复同步至商品详情")}
-        ${stat("当前筛选", reviews.length, "可按商品、用户或订单搜索")}
+        ${stat("当前筛选", reviews.length, "可按商品、日期、用户或订单筛选")}
       </div>
       <section class="panel">
         <div class="panel-head"><span class="panel-title">用户评价列表</span><span class="panel-note">共 ${reviews.length} 条</span></div>
         <div class="panel-body"><div class="filters">
           <label class="admin-search">${icon("search")}<input id="review-search" type="search" value="${esc(reviewQuery)}" placeholder="搜索商品、用户、订单或评价"></label>
           <select class="admin-select" id="review-filter"><option value="all" ${reviewFilter === "all" ? "selected" : ""}>全部回复状态</option><option value="unreplied" ${reviewFilter === "unreplied" ? "selected" : ""}>待回复</option><option value="replied" ${reviewFilter === "replied" ? "selected" : ""}>已回复</option></select>
+          <select class="admin-select" id="review-product-filter"><option value="all">全部商品</option>${state.products.map(product => `<option value="${esc(product.id)}" ${reviewProductFilter === product.id ? "selected" : ""}>${esc(product.name)}</option>`).join("")}</select>
+          <input class="admin-select" id="review-date-filter" type="date" value="${esc(reviewDateFilter)}" aria-label="评价日期">
         </div></div>
         <div class="table-wrap"><table class="admin-table review-admin-table"><thead><tr><th>商品</th><th>用户 / 订单</th><th>评分</th><th>评价内容</th><th>时间</th><th>运营回复</th><th>操作</th></tr></thead><tbody>${rows || `<tr><td colspan="7"><div class="admin-empty">暂无符合条件的评价</div></td></tr>`}</tbody></table></div>
+        ${pagination.html}
       </section>`);
-    root.querySelector("#review-search")?.addEventListener("input", event => { reviewQuery = event.target.value; renderReviews(); });
-    root.querySelector("#review-filter")?.addEventListener("change", event => { reviewFilter = event.target.value; renderReviews(); });
+    root.querySelector("#review-search")?.addEventListener("input", event => {
+      reviewQuery = event.target.value;
+      reviewPage = 1;
+      rerenderFilter(renderReviews, "#review-search", event);
+    });
+    root.querySelector("#review-filter")?.addEventListener("change", event => { reviewFilter = event.target.value; reviewPage = 1; renderReviews(); });
+    root.querySelector("#review-product-filter")?.addEventListener("change", event => { reviewProductFilter = event.target.value; reviewPage = 1; renderReviews(); });
+    root.querySelector("#review-date-filter")?.addEventListener("change", event => { reviewDateFilter = event.target.value; reviewPage = 1; renderReviews(); });
     root.querySelectorAll("[data-review-image]").forEach(button => {
       button.addEventListener("click", () => openReviewImage(button.dataset.reviewImage));
     });
@@ -328,7 +391,16 @@
     state = read();
     state.legalDocuments ||= [];
     const activeCount = state.legalDocuments.filter(item => item.status !== "inactive").length;
-    const rows = state.legalDocuments.map(document => `<tr>
+    const categories = [...new Set(state.legalDocuments.map(item => item.category || "商城规则"))];
+    const documents = state.legalDocuments.filter(document => {
+      const queryMatch = !legalQuery || `${document.title} ${document.id} ${document.category || ""}`.toLowerCase().includes(legalQuery.toLowerCase());
+      const categoryMatch = legalCategory === "all" || (document.category || "商城规则") === legalCategory;
+      const statusMatch = legalStatus === "all" || (legalStatus === "active" ? document.status !== "inactive" : document.status === "inactive");
+      return queryMatch && categoryMatch && statusMatch;
+    });
+    const pagination = window.MallUI.adminPage(documents, legalPage, 5, "legal");
+    legalPage = pagination.page;
+    const rows = pagination.rows.map(document => `<tr>
       <td><strong>${esc(document.title)}</strong><small class="review-meta">${esc(document.id)}</small></td>
       <td>${esc(document.category || "商城规则")}</td>
       <td>${esc(document.version || "—")}</td>
@@ -345,10 +417,23 @@
         ${stat("同步状态", "实时", "保存后前台读取最新内容")}
       </div>
       <section class="panel">
-        <div class="panel-head"><span class="panel-title">文档列表</span><span class="panel-note">支持编辑、发布与下线</span></div>
+        <div class="panel-head"><span class="panel-title">文档列表</span><span class="panel-note">筛选后共 ${documents.length} 条 · 支持编辑、发布与下线</span></div>
+        <div class="panel-body"><div class="filters">
+          <label class="admin-search">${icon("search")}<input id="legal-search" type="search" value="${esc(legalQuery)}" placeholder="搜索文档名称、编号或分类"></label>
+          <select class="admin-select" id="legal-category"><option value="all">全部分类</option>${categories.map(category => `<option value="${esc(category)}" ${legalCategory === category ? "selected" : ""}>${esc(category)}</option>`).join("")}</select>
+          <select class="admin-select" id="legal-status"><option value="all" ${legalStatus === "all" ? "selected" : ""}>全部发布状态</option><option value="active" ${legalStatus === "active" ? "selected" : ""}>已发布</option><option value="inactive" ${legalStatus === "inactive" ? "selected" : ""}>未发布</option></select>
+        </div></div>
         <div class="table-wrap"><table class="admin-table"><thead><tr><th>文档名称</th><th>分类</th><th>版本</th><th>更新时间</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows || `<tr><td colspan="6"><div class="admin-empty">暂无协议文档</div></td></tr>`}</tbody></table></div>
+        ${pagination.html}
       </section>
       <div class="inline-help">正式上线前请由法务审核条款，并在发布前确认版本、生效时间及用户告知方式。</div>`);
+    root.querySelector("#legal-search")?.addEventListener("input", event => {
+      legalQuery = event.target.value;
+      legalPage = 1;
+      rerenderFilter(renderLegalDocuments, "#legal-search", event);
+    });
+    root.querySelector("#legal-category")?.addEventListener("change", event => { legalCategory = event.target.value; legalPage = 1; renderLegalDocuments(); });
+    root.querySelector("#legal-status")?.addEventListener("change", event => { legalStatus = event.target.value; legalPage = 1; renderLegalDocuments(); });
   }
 
   function legalDocumentForm(document = null) {
@@ -470,28 +555,68 @@
 
   function renderBanners() {
     state = read();
-    const bannerRows = [...state.banners].sort((a, b) => (a.order || 0) - (b.order || 0)).map((banner, index) => `<div class="banner-row">
+    const banners = [...state.banners].sort((a, b) => (a.order || 0) - (b.order || 0)).filter(banner => {
+      const queryMatch = !bannerQuery || `${banner.title} ${banner.subtitle || ""} ${banner.label || ""} ${banner.target || ""}`.toLowerCase().includes(bannerQuery.toLowerCase());
+      const statusMatch = bannerEnabledFilter === "all" || (bannerEnabledFilter === "enabled" ? banner.enabled !== false : banner.enabled === false);
+      return queryMatch && statusMatch;
+    });
+    const bannerPagination = window.MallUI.adminPage(banners, bannerPage, 5, "banners");
+    bannerPage = bannerPagination.page;
+    const bannerRows = bannerPagination.rows.map((banner, index) => `<div class="banner-row">
       <div class="banner-thumb"><img src="${banner.image}" alt="${esc(banner.title)}"></div>
       <div class="banner-text"><strong>${esc(banner.title)}</strong><small>${esc(banner.subtitle || "")}</small></div>
-      <div class="banner-meta">位置：${index + 1}</div>
+      <div class="banner-meta">位置：${(banner.order ?? index) + 1}</div>
       <div class="banner-meta">${banner.enabled ? '<span class="status">已启用</span>' : '<span class="status off">已停用</span>'}</div>
       <div class="row-actions"><button class="text-action" data-action="edit-banner" data-id="${esc(banner.id)}">编辑</button><button class="text-action" title="上移" data-action="move-banner" data-id="${esc(banner.id)}" data-delta="-1">↑</button><button class="text-action" title="下移" data-action="move-banner" data-id="${esc(banner.id)}" data-delta="1">↓</button></div>
     </div>`).join("");
-    const zoneCards = [...state.zones].sort((a, b) => (a.order || 0) - (b.order || 0)).map((zone, index) => `<article class="zone-admin-card">
-      <div class="zone-admin-card-head"><span class="zone-admin-icon">${icon(zone.icon)}</span><button class="text-action" data-action="edit-zone" data-id="${esc(zone.id)}">编辑</button></div>
+    const zones = [...state.zones].sort((a, b) => (a.order || 0) - (b.order || 0)).filter(zone => {
+      const queryMatch = !zoneQuery || `${zone.name} ${(zone.subcats || []).map(item => item.name).join(" ")}`.toLowerCase().includes(zoneQuery.toLowerCase());
+      const statusMatch = zoneEnabledFilter === "all" || (zoneEnabledFilter === "enabled" ? zone.enabled !== false : zone.enabled === false);
+      return queryMatch && statusMatch;
+    });
+    const zonePagination = window.MallUI.adminPage(zones, zonePage, 5, "zones");
+    zonePage = zonePagination.page;
+    const zoneCards = zonePagination.rows.map((zone, index) => `<article class="zone-admin-card">
+      <div class="zone-admin-card-head"><span class="zone-admin-icon">${icon(zone.icon)}</span><span class="status ${zone.enabled === false ? "off" : ""}">${zone.enabled === false ? "已停用" : "已启用"}</span><button class="text-action" data-action="edit-zone" data-id="${esc(zone.id)}">编辑</button></div>
       <strong>${esc(zone.name)}</strong><p>${(zone.subcats || []).map(item => esc(item.name)).join(" · ")}</p>
-      <div class="zone-card-actions"><span class="inline-help">排序 ${index + 1}</span><button class="text-action" title="上移" data-action="move-zone" data-id="${esc(zone.id)}" data-delta="-1">↑</button><button class="text-action" title="下移" data-action="move-zone" data-id="${esc(zone.id)}" data-delta="1">↓</button></div>
+      <div class="zone-card-actions"><span class="inline-help">排序 ${(zone.order ?? index) + 1}</span><button class="text-action" title="上移" data-action="move-zone" data-id="${esc(zone.id)}" data-delta="-1">↑</button><button class="text-action" title="下移" data-action="move-zone" data-id="${esc(zone.id)}" data-delta="1">↓</button></div>
     </article>`).join("");
     const actions = `<button class="admin-btn primary" data-action="add-banner">${icon("plus")}新增 Banner</button>`;
     root.innerHTML = adminShell("banners", `${pageHead("Banner 与专区管理", "维护小程序首页轮播与一级分类入口，统一配置图片、排序和跳转。", actions)}
       <section class="panel" style="margin-bottom:14px">
-        <div class="panel-head"><span class="panel-title">首页 Banner</span><span class="panel-note">${state.banners.length} 张轮播图 · 小程序首页自动读取</span></div>
-        <div class="panel-body"><div class="banner-list">${bannerRows || `<div class="admin-empty">还没有 Banner，点击右上角新增</div>`}</div></div>
+        <div class="panel-head"><span class="panel-title">首页 Banner</span><span class="panel-note">筛选后共 ${banners.length} 张轮播图 · 小程序首页自动读取</span></div>
+        <div class="panel-body">
+          <div class="filters" style="margin-bottom:12px">
+            <label class="admin-search">${icon("search")}<input id="banner-search" type="search" value="${esc(bannerQuery)}" placeholder="搜索 Banner 标题、描述或链接"></label>
+            <select class="admin-select" id="banner-status"><option value="all" ${bannerEnabledFilter === "all" ? "selected" : ""}>全部启用状态</option><option value="enabled" ${bannerEnabledFilter === "enabled" ? "selected" : ""}>已启用</option><option value="disabled" ${bannerEnabledFilter === "disabled" ? "selected" : ""}>已停用</option></select>
+          </div>
+          <div class="banner-list">${bannerRows || `<div class="admin-empty">还没有符合条件的 Banner</div>`}</div>
+        </div>
+        ${bannerPagination.html}
       </section>
       <section class="panel">
-        <div class="panel-head"><span class="panel-title">首页专区入口</span><div style="display:flex;align-items:center;gap:12px"><span class="panel-note">一级分类关联二级分类，专区页按分类筛选商品</span><button class="admin-btn" data-action="add-zone">${icon("plus")}新增专区</button></div></div>
-        <div class="panel-body"><div class="zone-admin-grid">${zoneCards}</div></div>
+        <div class="panel-head"><span class="panel-title">首页专区入口</span><div style="display:flex;align-items:center;gap:12px"><span class="panel-note">筛选后共 ${zones.length} 个专区 · 一级分类关联二级分类</span><button class="admin-btn" data-action="add-zone">${icon("plus")}新增专区</button></div></div>
+        <div class="panel-body">
+          <div class="filters" style="margin-bottom:12px">
+            <label class="admin-search">${icon("search")}<input id="zone-search" type="search" value="${esc(zoneQuery)}" placeholder="搜索专区或二级分类"></label>
+            <select class="admin-select" id="zone-status"><option value="all" ${zoneEnabledFilter === "all" ? "selected" : ""}>全部启用状态</option><option value="enabled" ${zoneEnabledFilter === "enabled" ? "selected" : ""}>已启用</option><option value="disabled" ${zoneEnabledFilter === "disabled" ? "selected" : ""}>已停用</option></select>
+          </div>
+          <div class="zone-admin-grid">${zoneCards || `<div class="admin-empty">没有符合条件的专区</div>`}</div>
+        </div>
+        ${zonePagination.html}
       </section>`);
+    root.querySelector("#banner-search")?.addEventListener("input", event => {
+      bannerQuery = event.target.value;
+      bannerPage = 1;
+      rerenderFilter(renderBanners, "#banner-search", event);
+    });
+    root.querySelector("#banner-status")?.addEventListener("change", event => { bannerEnabledFilter = event.target.value; bannerPage = 1; renderBanners(); });
+    root.querySelector("#zone-search")?.addEventListener("input", event => {
+      zoneQuery = event.target.value;
+      zonePage = 1;
+      rerenderFilter(renderBanners, "#zone-search", event);
+    });
+    root.querySelector("#zone-status")?.addEventListener("change", event => { zoneEnabledFilter = event.target.value; zonePage = 1; renderBanners(); });
   }
 
   function bannerForm(banner = null) {
@@ -543,10 +668,11 @@
 
   function zoneForm(zone = null) {
     const editing = Boolean(zone);
-    const item = zone || { id: "", name: "", icon: "grid", subcats: [], order: state.zones.length };
+    const item = zone || { id: "", name: "", icon: "grid", subcats: [], enabled: true, order: state.zones.length };
     const backdrop = openModal(editing ? "编辑专区" : "新增专区", `<form id="zone-form"><div class="form-grid">
       <label class="field">专区名称<input name="name" required value="${esc(item.name)}" placeholder="例如：手机数码"></label>
       <label class="field">图标<select name="icon">${["phone","home","bag","coffee","spark","run","sun","grid"].map(name => `<option value="${name}" ${item.icon === name ? "selected" : ""}>${name}</option>`).join("")}</select></label>
+      <label class="field">状态<select name="enabled"><option value="true" ${item.enabled !== false ? "selected" : ""}>启用</option><option value="false" ${item.enabled === false ? "selected" : ""}>停用</option></select></label>
       <label class="field" style="grid-column:1/-1">二级分类（每行一项，格式：分类ID,分类名称）<textarea name="subcats" rows="5" required>${(item.subcats || []).map(subcat => `${subcat.id},${subcat.name}`).join("\n")}</textarea><span class="inline-help">商品编辑时选择相同分类，即会出现在对应专区页。</span></label>
       <input type="hidden" name="id" value="${esc(item.id)}">
     </div></form>`, `<button class="secondary-btn" type="button" data-modal-close>取消</button><button class="primary-btn small" form="zone-form" type="submit">保存专区</button>`);
@@ -558,7 +684,7 @@
         const [id, ...label] = line.split(",");
         return { id: id.trim(), name: label.join(",").trim() || id.trim() };
       });
-      const data = { id: form.get("id") || `zone-${Date.now()}`, name, icon: form.get("icon"), subcats, order: editing ? item.order : state.zones.length };
+      const data = { id: form.get("id") || `zone-${Date.now()}`, name, icon: form.get("icon"), subcats, enabled: form.get("enabled") === "true", order: editing ? item.order : state.zones.length };
       const index = state.zones.findIndex(entry => entry.id === data.id);
       if (index >= 0) state.zones[index] = data;
       else state.zones.push(data);
@@ -574,6 +700,28 @@
     if (!control) return;
     const action = control.dataset.action;
     const id = control.dataset.id;
+    if (action === "admin-page") {
+      const pageNumber = Number(control.dataset.page);
+      const listId = control.dataset.list;
+      if (!Number.isInteger(pageNumber)) return;
+      if (listId === "products") {
+        productPage = pageNumber;
+        renderProducts();
+      } else if (listId === "reviews") {
+        reviewPage = pageNumber;
+        renderReviews();
+      } else if (listId === "legal") {
+        legalPage = pageNumber;
+        renderLegalDocuments();
+      } else if (listId === "banners") {
+        bannerPage = pageNumber;
+        renderBanners();
+      } else if (listId === "zones") {
+        zonePage = pageNumber;
+        renderBanners();
+      }
+      return;
+    }
     if (action === "reply-review") {
       replyReviewForm(id);
     } else if (action === "add-legal") {

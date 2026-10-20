@@ -1,12 +1,30 @@
 (() => {
   const { read, write } = window.MallData;
-  const { escapeHtml: esc, money, toast, openModal, closeModal, adminShell } = window.MallUI;
+  const { escapeHtml: esc, money, adminPage, toast, openModal, closeModal, adminShell } = window.MallUI;
   const root = document.getElementById("root");
   if (!root) return;
   let state = read();
   let orderFilter = "all";
-  let orderQuery = "";
-  let orderSearchTimer = 0;
+  const pageState = Object.create(null);
+  const orderDateFilter = { query: "", start: "", end: "", min: "", max: "" };
+  const afterSaleFilter = { query: "", status: "all", start: "", end: "" };
+  const userFilter = { query: "", tier: "all", status: "all", distributor: "all" };
+  const logisticsFilter = { query: "", status: "all", start: "", end: "" };
+  const couponFilter = { query: "", status: "all", type: "all", start: "", end: "" };
+  const campaignFilter = { query: "", status: "all", start: "", end: "" };
+  const flashFilter = { query: "", status: "all", start: "", end: "" };
+  const groupFilter = { query: "", status: "all", start: "", end: "" };
+  const filterTimers = Object.create(null);
+  const filterState = {
+    coupons: couponFilter,
+    campaigns: campaignFilter,
+    flashes: flashFilter,
+    groups: groupFilter,
+    logistics: logisticsFilter,
+    orders: orderDateFilter,
+    aftersales: afterSaleFilter,
+    users: userFilter
+  };
   const shippingProvinces = [
     "北京市", "天津市", "上海市", "重庆市", "河北省", "山西省", "辽宁省", "吉林省", "黑龙江省", "江苏省",
     "浙江省", "安徽省", "福建省", "江西省", "山东省", "河南省", "湖北省", "湖南省", "广东省", "海南省",
@@ -52,6 +70,59 @@
     return `<section class="panel"><div class="panel-head"><span class="panel-title">${title}</span><span class="panel-note">${note}</span></div>${body}</section>`;
   }
 
+  function dateMatches(value, start, end) {
+    const date = String(value || "").slice(0, 10);
+    return (!start || date >= start) && (!end || date <= end);
+  }
+
+  function localDateTimeValue(offsetSeconds = 0) {
+    const date = new Date(Date.now() + offsetSeconds * 1000);
+    const pad = value => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  }
+
+  function validActivityWindow(startAt, endAt) {
+    return Number.isFinite(Date.parse(startAt)) && Number.isFinite(Date.parse(endAt)) && Date.parse(endAt) > Date.parse(startAt);
+  }
+
+  function rerenderList(listId) {
+    const renderers = {
+      orders: renderOrders,
+      aftersales: renderAfterSales,
+      users: renderUsers,
+      logistics: renderLogistics,
+      coupons: renderMarketing,
+      campaigns: renderCampaigns,
+      flashes: renderFlashSales,
+      groups: renderGroupDeals
+    };
+    renderers[listId]?.();
+  }
+
+  function bindListFilterEvents() {
+    const update = event => {
+      const control = event.target.closest("[data-list-filter][data-filter]");
+      if (!control) return;
+      const listId = control.dataset.listFilter;
+      const filter = filterState[listId];
+      if (!filter) return;
+      filter[control.dataset.filter] = control.value;
+      pageState[listId] = 1;
+      const rerender = () => {
+        rerenderList(listId);
+        const next = root.querySelector(`[data-list-filter="${listId}"][data-filter="${control.dataset.filter}"]`);
+        next?.focus();
+        if (next && typeof control.selectionStart === "number") next.setSelectionRange(control.selectionStart, control.selectionEnd);
+      };
+      if (event.type === "input" && control.type === "search") {
+        clearTimeout(filterTimers[listId]);
+        filterTimers[listId] = window.setTimeout(rerender, 140);
+      } else rerender();
+    };
+    root.addEventListener("input", update);
+    root.addEventListener("change", update);
+  }
+
   function orderRows(orders) {
     return orders.map(order => {
       const item = order.items?.[0] || {};
@@ -87,24 +158,31 @@
 
   function renderOrders() {
     state = read();
-    const userFilter = new URLSearchParams(location.search).get("user") || "";
-    const tabs = [["all", "全部"], ["pending_payment", "待付款"], ["to_ship", "待发货"], ["to_receive", "待收货"], ["completed", "已完成"], ["refunded", "已退款"]];
-    const orders = state.orders.filter(order => (!userFilter || (order.userId || "u1001") === userFilter) && (orderFilter === "all" || order.status === orderFilter) && (!orderQuery || `${order.id} ${order.address?.name || ""} ${order.items?.map(item => item.name).join(" ")}`.toLowerCase().includes(orderQuery.toLowerCase())));
-    const table = `<div class="table-wrap"><table class="admin-table"><thead><tr><th>订单号 / 时间</th><th>商品信息</th><th>收货信息</th><th>实付金额</th><th>订单状态</th><th>操作</th></tr></thead><tbody>${orderRows(orders)}</tbody></table></div>`;
+    const userIdFilter = new URLSearchParams(location.search).get("user") || "";
+    const tabs = [["all", "全部"], ["pending_payment", "待付款"], ["to_ship", "待发货"], ["to_receive", "待收货"], ["completed", "已完成"], ["cancelled", "已取消"], ["refunded", "已退款"]];
+    const orders = state.orders.filter(order => {
+      const search = `${order.id} ${order.userId || ""} ${order.address?.name || ""} ${order.address?.phone || ""} ${order.items?.map(item => item.name).join(" ") || ""}`.toLowerCase();
+      const amount = Number(order.total || 0);
+      return (!userIdFilter || (order.userId || "u1001") === userIdFilter)
+        && (orderFilter === "all" || order.status === orderFilter)
+        && (!orderDateFilter.query || search.includes(orderDateFilter.query.toLowerCase()))
+        && dateMatches(order.createdAt, orderDateFilter.start, orderDateFilter.end)
+        && (orderDateFilter.min === "" || amount >= Number(orderDateFilter.min))
+        && (orderDateFilter.max === "" || amount <= Number(orderDateFilter.max));
+    });
+    const paged = adminPage(orders, pageState.orders || 1, 5, "orders");
+    pageState.orders = paged.page;
+    const table = `<div class="table-wrap"><table class="admin-table"><thead><tr><th>订单号 / 时间</th><th>商品信息</th><th>收货信息</th><th>实付金额</th><th>订单状态</th><th>操作</th></tr></thead><tbody>${orderRows(paged.rows)}</tbody></table></div>${paged.html}`;
     root.innerHTML = adminShell("orders", `${head("订单管理", "处理订单查询、关闭与发货，用户端同步显示最新订单状态。")}
       <div class="stats-row">${stat("全部订单", state.orders.length, "包含演示状态订单")}${stat("待付款", state.orders.filter(item => item.status === "pending_payment").length, "等待用户完成支付")}${stat("待发货", state.orders.filter(item => item.status === "to_ship").length, "已支付待履约")}${stat("运输中", state.orders.filter(item => item.status === "to_receive").length, "用户可查看物流")}</div>
-      ${panel("订单列表", `<div class="panel-body"><div class="filters"><label class="admin-search"><input id="order-search" type="search" placeholder="订单号 / 收货人 / 商品" value="${esc(orderQuery)}"></label><span class="inline-help">发货后前台订单状态和物流轨迹同步更新</span></div><div class="toolbar-row" style="margin-top:12px">${tabs.map(([key, label]) => `<button class="filter-chip ${orderFilter === key ? "active" : ""}" data-action="order-filter" data-value="${key}">${label}</button>`).join("")}</div></div>${table}`, `${orders.length} 笔订单`)}`);
-    root.querySelector("#order-search")?.addEventListener("input", event => {
-      orderQuery = event.target.value;
-      const cursor = event.target.selectionStart;
-      clearTimeout(orderSearchTimer);
-      orderSearchTimer = window.setTimeout(() => {
-        renderOrders();
-        const input = root.querySelector("#order-search");
-        input?.focus();
-        input?.setSelectionRange(cursor, cursor);
-      }, 140);
-    });
+      ${panel("订单列表", `<div class="panel-body"><div class="filters">
+        <label class="admin-search"><input data-list-filter="orders" data-filter="query" id="order-search" type="search" placeholder="订单 / 用户 / 商品 / 收货信息" value="${esc(orderDateFilter.query)}"></label>
+        <label class="field filter-field">下单起始<input data-list-filter="orders" data-filter="start" type="date" value="${esc(orderDateFilter.start)}"></label>
+        <label class="field filter-field">下单截至<input data-list-filter="orders" data-filter="end" type="date" value="${esc(orderDateFilter.end)}"></label>
+        <label class="field filter-field">金额从<input data-list-filter="orders" data-filter="min" type="number" min="0" step="0.01" value="${esc(orderDateFilter.min)}"></label>
+        <label class="field filter-field">金额至<input data-list-filter="orders" data-filter="max" type="number" min="0" step="0.01" value="${esc(orderDateFilter.max)}"></label>
+        <span class="inline-help">发货后前台订单状态和物流轨迹同步更新</span>
+      </div><div class="toolbar-row" style="margin-top:12px">${tabs.map(([key, label]) => `<button class="filter-chip ${orderFilter === key ? "active" : ""}" data-action="order-filter" data-value="${key}">${label}</button>`).join("")}</div></div>${table}`, `${orders.length} 笔订单`)}`);
   }
 
   function renderOrderDetail() {
@@ -149,7 +227,17 @@
 
   function renderAfterSales() {
     state = read();
-    const rows = state.afterSales.map(ticket => {
+    const filtered = state.afterSales.filter(ticket => {
+      const order = state.orders.find(item => item.id === ticket.orderId);
+      const user = state.users.find(item => item.id === ticket.userId || item.id === order?.userId);
+      const search = `${ticket.id} ${ticket.orderId} ${user?.name || ""} ${user?.phone || ""} ${ticket.reason || ""} ${ticket.description || ""} ${(ticket.items || []).map(item => item.name).join(" ")}`.toLowerCase();
+      return (!afterSaleFilter.query || search.includes(afterSaleFilter.query.toLowerCase()))
+        && (afterSaleFilter.status === "all" || ticket.status === afterSaleFilter.status)
+        && dateMatches(ticket.createdAt, afterSaleFilter.start, afterSaleFilter.end);
+    });
+    const paged = adminPage(filtered, pageState.aftersales || 1, 5, "aftersales");
+    pageState.aftersales = paged.page;
+    const rows = paged.rows.map(ticket => {
       const order = state.orders.find(item => item.id === ticket.orderId);
       const itemSummary = (ticket.items || []).map(line => `${esc(line.name || order?.items?.[line.orderItemIndex]?.name || "商品")} × ${Number(line.qty || 0)}${line.skuLabel ? ` · ${esc(line.skuLabel)}` : ""}`).join("<br>") || "旧版工单未记录商品明细";
       const shipment = ticket.returnShipment?.trackingNo
@@ -174,12 +262,26 @@
     const waitingInspection = state.afterSales.filter(item => item.status === "return_in_transit").length;
     root.innerHTML = adminShell("aftersales", `${head("售后管理", "审核用户退款申请，审核结果同步更新订单状态与关联分销佣金。")}
       <div class="stats-row">${stat("售后申请", state.afterSales.length, "累计工单")}${stat("待审核", pending, "等待运营处理")}${stat("待验收", waitingInspection, "退货已寄出")}${stat("已退款", state.afterSales.filter(item => item.status === "refunded").length, "已完成退款")}</div>
-      ${panel("售后工单", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>工单号</th><th>关联订单</th><th>商品 / 数量</th><th>申请原因 / 退货物流</th><th>退款拆分</th><th>状态</th><th>处理</th></tr></thead><tbody>${rows}</tbody></table></div>`, "验收通过后模拟退款、恢复库存并调整积分与佣金")}`);
+      ${panel("售后工单", `<div class="panel-body"><div class="filters">
+        <label class="admin-search"><input data-list-filter="aftersales" data-filter="query" type="search" placeholder="工单 / 订单 / 用户 / 商品 / 原因" value="${esc(afterSaleFilter.query)}"></label>
+        <select class="admin-select" data-list-filter="aftersales" data-filter="status"><option value="all">全部工单状态</option>${Object.entries(statusText).filter(([key]) => ["pending", "approved", "approved_wait_return", "return_in_transit", "return_received", "refund_processing", "inspection_failed", "refunded", "rejected"].includes(key)).map(([key, label]) => `<option value="${key}" ${afterSaleFilter.status === key ? "selected" : ""}>${label}</option>`).join("")}</select>
+        <label class="field filter-field">申请起始<input data-list-filter="aftersales" data-filter="start" type="date" value="${esc(afterSaleFilter.start)}"></label>
+        <label class="field filter-field">申请截至<input data-list-filter="aftersales" data-filter="end" type="date" value="${esc(afterSaleFilter.end)}"></label>
+      </div></div><div class="table-wrap"><table class="admin-table"><thead><tr><th>工单号</th><th>关联订单</th><th>商品 / 数量</th><th>申请原因 / 退货物流</th><th>退款拆分</th><th>状态</th><th>处理</th></tr></thead><tbody>${rows}</tbody></table></div>${paged.html}`, `${filtered.length} 笔售后工单`)}`);
   }
 
   function renderMarketing() {
     state = read();
-    const coupons = state.coupons.map(item => `<tr><td><strong>${esc(item.name)}</strong><small style="display:block;margin-top:4px;color:#999">${item.type === "rate" ? `${Number(item.value) / 10} 折` : `满 ${item.threshold} 减 ${item.value}`}</small></td><td>${item.claimed || 0} / ${Number(item.claimed || 0) + Number(item.stock || 0)}</td><td>${statusTag(item.status)}</td><td><button class="text-action" data-action="toggle-coupon" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></td></tr>`).join("");
+    const filteredCoupons = state.coupons.filter(item => {
+      const query = `${item.id} ${item.name} ${item.type} ${item.threshold || ""}`.toLowerCase();
+      return (!couponFilter.query || query.includes(couponFilter.query.toLowerCase()))
+        && (couponFilter.status === "all" || item.status === couponFilter.status)
+        && (couponFilter.type === "all" || item.type === couponFilter.type)
+        && dateMatches(item.startAt, couponFilter.start, couponFilter.end);
+    });
+    const pagedCoupons = adminPage(filteredCoupons, pageState.coupons || 1, 5, "coupons");
+    pageState.coupons = pagedCoupons.page;
+    const coupons = pagedCoupons.rows.map(item => `<tr><td><strong>${esc(item.name)}</strong><small style="display:block;margin-top:4px;color:#999">${item.type === "rate" ? `${Number(item.value) / 10} 折` : `满 ${item.threshold} 减 ${item.value}`}</small></td><td>${item.claimed || 0} / ${Number(item.claimed || 0) + Number(item.stock || 0)}</td><td>${esc(String(item.startAt || "—").replace("T", " "))}<small style="display:block;color:#999">至 ${esc(String(item.endAt || "—").replace("T", " "))}</small></td><td>${statusTag(item.status)}</td><td><button class="text-action" data-action="toggle-coupon" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></td></tr>`).join("") || `<tr><td colspan="5"><div class="admin-empty">没有符合条件的优惠券</div></td></tr>`;
     const categoryCards = [
       ["admin-marketing-campaigns.html", "主题活动", "维护活动周期、用户展示内容与报名状态", state.campaigns.length, "campaign"],
       ["admin-marketing-flash.html", "限时秒杀", "独立维护商品、秒杀价、活动库存与时段", state.flashSales.length, "flash"],
@@ -194,40 +296,87 @@
     root.innerHTML = adminShell("marketing", `${head("营销中心", "按营销类型分区管理，活动、秒杀与拼团各自维护；所有页面共享前台参与数据。", actions)}
       <div class="stats-row">${stat("优惠券", state.coupons.length, "领取后可在结算页使用")}${stat("主题活动", state.campaigns.length, `${(state.campaignParticipations || []).length} 人次报名`)}${stat("秒杀场次", state.flashSales.length, "支付后扣减活动名额")}${stat("拼团活动", state.groupDeals.length, "成团人数随支付订单增长")}</div>
       <section class="marketing-category-list">${categoryCards}</section>
-      <div style="margin-top:16px">${panel("优惠券管理", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>优惠券</th><th>已领 / 总量</th><th>状态</th><th>操作</th></tr></thead><tbody>${coupons || `<tr><td colspan="4"><div class="admin-empty">暂无优惠券</div></td></tr>`}</tbody></table></div>`, "领取与核销由前台订单驱动")}</div>`);
+      <div style="margin-top:16px">${panel("优惠券管理", `<div class="panel-body"><div class="filters">
+        <label class="admin-search"><input data-list-filter="coupons" data-filter="query" type="search" placeholder="优惠券名称 / 编号 / 门槛" value="${esc(couponFilter.query)}"></label>
+        <select class="admin-select" data-list-filter="coupons" data-filter="status"><option value="all">全部状态</option><option value="active" ${couponFilter.status === "active" ? "selected" : ""}>进行中</option><option value="paused" ${couponFilter.status === "paused" ? "selected" : ""}>已暂停</option></select>
+        <select class="admin-select" data-list-filter="coupons" data-filter="type"><option value="all">全部类型</option><option value="amount" ${couponFilter.type === "amount" ? "selected" : ""}>满减券</option><option value="rate" ${couponFilter.type === "rate" ? "selected" : ""}>折扣券</option></select>
+        <label class="field filter-field">开始日期<input data-list-filter="coupons" data-filter="start" type="date" value="${esc(couponFilter.start)}"></label>
+        <label class="field filter-field">截至日期<input data-list-filter="coupons" data-filter="end" type="date" value="${esc(couponFilter.end)}"></label>
+      </div></div><div class="table-wrap"><table class="admin-table"><thead><tr><th>优惠券</th><th>已领 / 总量</th><th>活动时间</th><th>状态</th><th>操作</th></tr></thead><tbody>${coupons}</tbody></table></div>${pagedCoupons.html}`, `${filteredCoupons.length} 张优惠券`)}</div>`);
   }
 
   function renderCampaigns() {
     state = read();
-    const rows = state.campaigns.map(item => `<tr><td><strong>${esc(item.name)}</strong><small style="display:block;margin-top:4px;color:#999">${esc(item.subtitle)}</small></td><td>${esc(item.startAt)} - ${esc(item.endAt)}</td><td>${statusTag(item.status)}</td><td><button class="text-action" data-action="toggle-campaign" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></td></tr>`).join("");
+    const filtered = state.campaigns.filter(item => {
+      const query = `${item.id} ${item.name} ${item.subtitle} ${item.badge || ""}`.toLowerCase();
+      return (!campaignFilter.query || query.includes(campaignFilter.query.toLowerCase()))
+        && (campaignFilter.status === "all" || item.status === campaignFilter.status)
+        && dateMatches(item.startAt, campaignFilter.start, campaignFilter.end);
+    });
+    const paged = adminPage(filtered, pageState.campaigns || 1, 5, "campaigns");
+    pageState.campaigns = paged.page;
+    const rows = paged.rows.map(item => `<tr><td><strong>${esc(item.name)}</strong><small style="display:block;margin-top:4px;color:#999">${esc(item.subtitle)}</small></td><td>${esc(item.startAt.replace("T", " "))} - ${esc(item.endAt.replace("T", " "))}</td><td>${statusTag(item.status)}</td><td><button class="text-action" data-action="toggle-campaign" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></td></tr>`).join("") || `<tr><td colspan="4"><div class="admin-empty">没有符合条件的主题活动</div></td></tr>`;
     const actions = `<a class="admin-btn" href="admin-marketing.html">返回营销中心</a><button class="admin-btn primary" data-action="new-campaign">新建主题活动</button>`;
     root.innerHTML = adminShell("marketing-campaigns", `${head("主题活动", "维护活动主题、展示说明、活动周期与用户报名状态。", actions)}
       <div class="stats-row">${stat("主题活动", state.campaigns.length, "当前活动总数")}${stat("进行中", state.campaigns.filter(item => item.status === "active").length, "用户端可见")}${stat("累计报名", (state.campaignParticipations || []).length, "来自小程序端")}${stat("活动入口", "小程序", "报名后写入共享数据")}</div>
-      ${panel("活动列表", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>活动名称</th><th>活动周期</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows || `<tr><td colspan="4"><div class="admin-empty">暂无主题活动</div></td></tr>`}</tbody></table></div>`, `${state.campaigns.length} 项活动`)}`);
+      ${panel("活动列表", `<div class="panel-body"><div class="filters">
+        <label class="admin-search"><input data-list-filter="campaigns" data-filter="query" type="search" placeholder="活动名称 / 编号 / 说明" value="${esc(campaignFilter.query)}"></label>
+        <select class="admin-select" data-list-filter="campaigns" data-filter="status"><option value="all">全部状态</option><option value="active" ${campaignFilter.status === "active" ? "selected" : ""}>进行中</option><option value="paused" ${campaignFilter.status === "paused" ? "selected" : ""}>已暂停</option></select>
+        <label class="field filter-field">开始日期<input data-list-filter="campaigns" data-filter="start" type="date" value="${esc(campaignFilter.start)}"></label>
+        <label class="field filter-field">截至日期<input data-list-filter="campaigns" data-filter="end" type="date" value="${esc(campaignFilter.end)}"></label>
+      </div></div><div class="table-wrap"><table class="admin-table"><thead><tr><th>活动名称</th><th>活动周期</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>${paged.html}`, `${filtered.length} 项活动`)}`);
   }
 
   function renderFlashSales() {
     state = read();
-    const rows = state.flashSales.map(item => {
+    const filtered = state.flashSales.filter(item => {
       const product = state.products.find(productItem => productItem.id === item.productId);
-      return `<tr><td><div class="product-cell"><img src="${esc(product?.image || "")}" alt=""><div><strong>${esc(product?.name || item.productId)}</strong><small>${esc(item.title || "限时秒杀")}</small></div></div></td><td><strong>${money(item.price)}</strong><small class="marketing-old-price">${money(item.originalPrice || product?.price)}</small></td><td>${Number(item.sold || 0)} / ${Number(item.quota || 0)}</td><td>${esc(item.startAt || "—")} - ${esc(item.endAt || "—")}</td><td>${statusTag(item.status)}</td><td><button class="text-action" data-action="toggle-sale" data-kind="flashSales" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></td></tr>`;
-    }).join("");
+      const query = `${item.id} ${item.title || ""} ${product?.name || ""} ${item.productId}`.toLowerCase();
+      return (!flashFilter.query || query.includes(flashFilter.query.toLowerCase()))
+        && (flashFilter.status === "all" || item.status === flashFilter.status)
+        && dateMatches(item.startAt, flashFilter.start, flashFilter.end);
+    });
+    const paged = adminPage(filtered, pageState.flashes || 1, 5, "flashes");
+    pageState.flashes = paged.page;
+    const rows = paged.rows.map(item => {
+      const product = state.products.find(productItem => productItem.id === item.productId);
+      return `<tr><td><div class="product-cell"><img src="${esc(product?.image || "")}" alt=""><div><strong>${esc(product?.name || item.productId)}</strong><small>${esc(item.title || "限时秒杀")}</small></div></div></td><td><strong>${money(item.price)}</strong><small class="marketing-old-price">${money(item.originalPrice || product?.price)}</small></td><td>${Number(item.sold || 0)} / ${Number(item.quota || 0)}</td><td>${esc(item.startAt.replace("T", " "))} - ${esc(item.endAt.replace("T", " "))}</td><td>${statusTag(item.status)}</td><td><button class="text-action" data-action="toggle-sale" data-kind="flashSales" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></td></tr>`;
+    }).join("") || `<tr><td colspan="6"><div class="admin-empty">没有符合条件的秒杀活动</div></td></tr>`;
     const actions = `<a class="admin-btn" href="admin-marketing.html">返回营销中心</a><button class="admin-btn primary" data-action="new-sale" data-kind="flash">新建秒杀</button>`;
     root.innerHTML = adminShell("marketing-flash", `${head("限时秒杀", "单独维护秒杀商品、活动价格、库存配额与起止时间。", actions)}
       <div class="stats-row">${stat("秒杀场次", state.flashSales.length, "累计配置")}${stat("进行中", state.flashSales.filter(item => item.status === "active").length, "小程序可参与")}${stat("活动库存", state.flashSales.reduce((sum, item) => sum + Number(item.quota || 0), 0), "各场次配额合计")}${stat("已售数量", state.flashSales.reduce((sum, item) => sum + Number(item.sold || 0), 0), "支付后更新")}</div>
-      ${panel("秒杀场次", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>商品</th><th>活动价</th><th>已售 / 配额</th><th>活动时段</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows || `<tr><td colspan="6"><div class="admin-empty">暂无秒杀场次</div></td></tr>`}</tbody></table></div>`, `${state.flashSales.length} 场`)}`);
+      ${panel("秒杀场次", `<div class="panel-body"><div class="filters">
+        <label class="admin-search"><input data-list-filter="flashes" data-filter="query" type="search" placeholder="商品 / 活动编号" value="${esc(flashFilter.query)}"></label>
+        <select class="admin-select" data-list-filter="flashes" data-filter="status"><option value="all">全部状态</option><option value="active" ${flashFilter.status === "active" ? "selected" : ""}>进行中</option><option value="paused" ${flashFilter.status === "paused" ? "selected" : ""}>已暂停</option></select>
+        <label class="field filter-field">开始日期<input data-list-filter="flashes" data-filter="start" type="date" value="${esc(flashFilter.start)}"></label>
+        <label class="field filter-field">截至日期<input data-list-filter="flashes" data-filter="end" type="date" value="${esc(flashFilter.end)}"></label>
+      </div></div><div class="table-wrap"><table class="admin-table"><thead><tr><th>商品</th><th>活动价</th><th>已售 / 配额</th><th>活动时段</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>${paged.html}`, `${filtered.length} 场`)}`);
   }
 
   function renderGroupDeals() {
     state = read();
-    const rows = state.groupDeals.map(item => {
+    const filtered = state.groupDeals.filter(item => {
       const product = state.products.find(productItem => productItem.id === item.productId);
-      return `<tr><td><div class="product-cell"><img src="${esc(product?.image || "")}" alt=""><div><strong>${esc(item.title || "好友拼团")}</strong><small>${esc(product?.name || item.productId)}</small></div></div></td><td><strong>${money(item.groupPrice)}</strong><small class="marketing-old-price">${money(item.originalPrice || product?.price)}</small></td><td>${Number(item.joined || 0)} 人</td><td>${Number(item.targetMembers || 0)} 人</td><td>${esc(item.expiresIn || "—")}</td><td>${statusTag(item.status)}</td><td><button class="text-action" data-action="toggle-sale" data-kind="groupDeals" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></td></tr>`;
-    }).join("");
+      const query = `${item.id} ${item.title || ""} ${product?.name || ""} ${item.productId}`.toLowerCase();
+      return (!groupFilter.query || query.includes(groupFilter.query.toLowerCase()))
+        && (groupFilter.status === "all" || item.status === groupFilter.status)
+        && dateMatches(item.startAt, groupFilter.start, groupFilter.end);
+    });
+    const paged = adminPage(filtered, pageState.groups || 1, 5, "groups");
+    pageState.groups = paged.page;
+    const rows = paged.rows.map(item => {
+      const product = state.products.find(productItem => productItem.id === item.productId);
+      return `<tr><td><div class="product-cell"><img src="${esc(product?.image || "")}" alt=""><div><strong>${esc(item.title || "好友拼团")}</strong><small>${esc(product?.name || item.productId)}</small></div></div></td><td><strong>${money(item.groupPrice)}</strong><small class="marketing-old-price">${money(item.originalPrice || product?.price)}</small></td><td>${Number(item.joined || 0)} 人</td><td>${Number(item.targetMembers || 0)} 人</td><td>${esc(item.startAt.replace("T", " "))} - ${esc(item.endAt.replace("T", " "))}</td><td>${statusTag(item.status)}</td><td><button class="text-action" data-action="toggle-sale" data-kind="groupDeals" data-id="${esc(item.id)}">${item.status === "active" ? "暂停" : "启用"}</button></td></tr>`;
+    }).join("") || `<tr><td colspan="7"><div class="admin-empty">没有符合条件的拼团活动</div></td></tr>`;
     const actions = `<a class="admin-btn" href="admin-marketing.html">返回营销中心</a><button class="admin-btn primary" data-action="new-sale" data-kind="group">新建拼团</button>`;
     root.innerHTML = adminShell("marketing-groups", `${head("好友拼团", "单独维护拼团商品、拼团价格、成团人数与活动时长。", actions)}
       <div class="stats-row">${stat("拼团活动", state.groupDeals.length, "累计配置")}${stat("进行中", state.groupDeals.filter(item => item.status === "active").length, "小程序可参与")}${stat("累计参与", state.groupDeals.reduce((sum, item) => sum + Number(item.joined || 0), 0), "支付后更新")}${stat("成团规则", "按活动", "活动独立设置目标人数")}</div>
-      ${panel("拼团活动", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>活动 / 商品</th><th>拼团价</th><th>已参与</th><th>成团人数</th><th>活动时长</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows || `<tr><td colspan="7"><div class="admin-empty">暂无拼团活动</div></td></tr>`}</tbody></table></div>`, `${state.groupDeals.length} 项活动`)}`);
+      ${panel("拼团活动", `<div class="panel-body"><div class="filters">
+        <label class="admin-search"><input data-list-filter="groups" data-filter="query" type="search" placeholder="拼团 / 商品 / 活动编号" value="${esc(groupFilter.query)}"></label>
+        <select class="admin-select" data-list-filter="groups" data-filter="status"><option value="all">全部状态</option><option value="active" ${groupFilter.status === "active" ? "selected" : ""}>进行中</option><option value="paused" ${groupFilter.status === "paused" ? "selected" : ""}>已暂停</option></select>
+        <label class="field filter-field">开始日期<input data-list-filter="groups" data-filter="start" type="date" value="${esc(groupFilter.start)}"></label>
+        <label class="field filter-field">截至日期<input data-list-filter="groups" data-filter="end" type="date" value="${esc(groupFilter.end)}"></label>
+      </div></div><div class="table-wrap"><table class="admin-table"><thead><tr><th>活动 / 商品</th><th>拼团价</th><th>已参与</th><th>成团人数</th><th>活动周期</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>${paged.html}`, `${filtered.length} 项活动`)}`);
   }
 
   function renderMarketingPage() {
@@ -252,8 +401,16 @@
 
   function renderLogistics() {
     state = read();
-    const openOrders = state.orders.filter(item => ["to_ship", "to_receive"].includes(item.status));
-    const rows = openOrders.map(order => `<tr><td>${esc(order.id)}</td><td>${esc(order.address?.name || "—")}<small style="display:block;margin-top:4px;color:#999">${esc(order.address?.phone || "")}</small></td><td>${statusTag(order.status)}</td><td>${esc(order.carrier || "待发货")}</td><td>${esc(order.trackingNo || "—")}</td><td>${order.status === "to_ship" ? `<button class="text-action" data-action="ship" data-id="${esc(order.id)}">录入物流</button>` : `<button class="text-action" data-action="view-track" data-id="${esc(order.id)}">查看轨迹</button>`}</td></tr>`).join("");
+    const openOrders = state.orders.filter(item => {
+      if (!["to_ship", "to_receive"].includes(item.status)) return false;
+      const query = `${item.id} ${item.address?.name || ""} ${item.address?.phone || ""} ${item.carrier || ""} ${item.trackingNo || ""}`.toLowerCase();
+      return (!logisticsFilter.query || query.includes(logisticsFilter.query.toLowerCase()))
+        && (logisticsFilter.status === "all" || item.status === logisticsFilter.status)
+        && dateMatches(item.createdAt, logisticsFilter.start, logisticsFilter.end);
+    });
+    const pagedOrders = adminPage(openOrders, pageState.logistics || 1, 5, "logistics");
+    pageState.logistics = pagedOrders.page;
+    const rows = pagedOrders.rows.map(order => `<tr><td>${esc(order.id)}<small>${esc(order.createdAt || "")}</small></td><td>${esc(order.address?.name || "—")}<small style="display:block;margin-top:4px;color:#999">${esc(order.address?.phone || "")}</small></td><td>${statusTag(order.status)}</td><td>${esc(order.carrier || "待发货")}</td><td>${esc(order.trackingNo || "—")}</td><td>${order.status === "to_ship" ? `<button class="text-action" data-action="ship" data-id="${esc(order.id)}">录入物流</button>` : `<button class="text-action" data-action="view-track" data-id="${esc(order.id)}">查看轨迹</button>`}</td></tr>`).join("") || `<tr><td colspan="6"><div class="admin-empty">没有符合条件的待履约订单</div></td></tr>`;
     const carriers = state.carriers.map(carrier => `<div class="list-link"><span>${esc(carrier.name)}</span><button class="switch ${carrier.enabled ? "on" : ""}" aria-label="切换${esc(carrier.name)}" data-action="toggle-carrier" data-id="${esc(carrier.id)}"></button></div>`).join("");
     const templates = (state.shippingTemplates || []).map(template => {
       const exceptions = (template.rules || []).map(rule => `${(rule.provinces || []).map(esc).join("、")}：${rule.freeShipping ? "包邮" : `${money(rule.fee)}${Number(rule.freeThreshold) > 0 ? `，满 ${money(rule.freeThreshold)} 包邮` : ""}`}`).join("；");
@@ -262,7 +419,12 @@
     }).join("");
     root.innerHTML = adminShell("logistics", `${head("快递 / 物流", "维护可用承运商、为待发货订单录入运单；物流节点实时显示在用户订单中。")}
       <div class="stats-row">${stat("待发货", state.orders.filter(item => item.status === "to_ship").length, "待录入承运商与单号")}${stat("运输中", state.orders.filter(item => item.status === "to_receive").length, "用户端可查看物流")}${stat("配送模板", (state.shippingTemplates || []).length, "按省份设置包邮与运费")}${stat("已完成物流", state.orders.filter(item => item.status === "completed").length, "用户确认收货")}</div>
-      <div class="compare-layout">${panel("待履约订单", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>订单号</th><th>收货人</th><th>状态</th><th>承运商</th><th>运单号</th><th>操作</th></tr></thead><tbody>${rows || `<tr><td colspan="6"><div class="admin-empty">暂无待履约订单</div></td></tr>`}</tbody></table></div>`, "录入发货信息后同步订单状态")}
+      <div class="compare-layout">${panel("待履约订单", `<div class="panel-body"><div class="filters">
+        <label class="admin-search"><input data-list-filter="logistics" data-filter="query" type="search" placeholder="订单 / 收货人 / 承运商 / 运单号" value="${esc(logisticsFilter.query)}"></label>
+        <select class="admin-select" data-list-filter="logistics" data-filter="status"><option value="all">全部履约状态</option><option value="to_ship" ${logisticsFilter.status === "to_ship" ? "selected" : ""}>待发货</option><option value="to_receive" ${logisticsFilter.status === "to_receive" ? "selected" : ""}>运输中</option></select>
+        <label class="field filter-field">下单起始<input data-list-filter="logistics" data-filter="start" type="date" value="${esc(logisticsFilter.start)}"></label>
+        <label class="field filter-field">下单截至<input data-list-filter="logistics" data-filter="end" type="date" value="${esc(logisticsFilter.end)}"></label>
+      </div></div><div class="table-wrap"><table class="admin-table"><thead><tr><th>订单号 / 时间</th><th>收货人</th><th>状态</th><th>承运商</th><th>运单号</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>${pagedOrders.html}`, "录入发货信息后同步订单状态")}
         ${panel("承运商配置", `<div class="panel-body">${carriers}<div class="inline-help" style="margin-top:10px">停用承运商后，发货表单不再提供该选项。</div></div>`, "模拟配置")}</div>
       <div style="margin-top:14px">${panel("配送模板", `<div class="panel-body"><div class="shipping-template-list">${templates || `<div class="admin-empty">暂无配送模板</div>`}</div><div class="inline-help" style="margin-top:12px">商品关联模板后，小程序按收货省份计算各模板运费；相同模板商品合并判断满额包邮。</div><button class="admin-btn primary" type="button" data-action="new-shipping-template" style="margin-top:12px">＋ 新建配送模板</button></div>`, "配置默认规则与省份例外")}</div>`);
   }
@@ -335,10 +497,25 @@
 
   function renderUsers() {
     state = read();
-    const users = state.users.map(user => `<tr><td><strong>${esc(user.name)}</strong><small style="display:block;margin-top:4px;color:#999">${esc(user.id)} · ${esc(user.phone)}</small></td><td>${esc(user.tier)}</td><td>${Number(user.points).toLocaleString()}</td><td>${user.orders}</td><td>${money(user.spend)}</td><td>${user.distributor ? "分销员" : "普通用户"}</td><td>${statusTag(user.status === "active" ? "approved" : "rejected")}</td><td><button class="text-action" data-action="toggle-user" data-id="${esc(user.id)}">${user.status === "active" ? "禁用" : "启用"}</button> <button class="text-action" data-action="toggle-distributor" data-id="${esc(user.id)}">${user.distributor ? "取消分销" : "开通分销"}</button> <button class="text-action" data-action="user-orders" data-id="${esc(user.id)}">订单</button></td></tr>`).join("");
+    const tiers = [...new Set(state.users.map(user => user.tier).filter(Boolean))];
+    const filtered = state.users.filter(user => {
+      const query = `${user.id} ${user.name} ${user.phone}`.toLowerCase();
+      return (!userFilter.query || query.includes(userFilter.query.toLowerCase()))
+        && (userFilter.tier === "all" || user.tier === userFilter.tier)
+        && (userFilter.status === "all" || user.status === userFilter.status)
+        && (userFilter.distributor === "all" || String(Boolean(user.distributor)) === userFilter.distributor);
+    });
+    const paged = adminPage(filtered, pageState.users || 1, 5, "users");
+    pageState.users = paged.page;
+    const users = paged.rows.map(user => `<tr><td><strong>${esc(user.name)}</strong><small style="display:block;margin-top:4px;color:#999">${esc(user.id)} · ${esc(user.phone)}</small></td><td>${esc(user.tier)}</td><td>${Number(user.points).toLocaleString()}</td><td>${user.orders}</td><td>${money(user.spend)}</td><td>${user.distributor ? "分销员" : "普通用户"}</td><td>${statusTag(user.status === "active" ? "approved" : "rejected")}</td><td><button class="text-action" data-action="toggle-user" data-id="${esc(user.id)}">${user.status === "active" ? "禁用" : "启用"}</button> <button class="text-action" data-action="toggle-distributor" data-id="${esc(user.id)}">${user.distributor ? "取消分销" : "开通分销"}</button> <button class="text-action" data-action="user-orders" data-id="${esc(user.id)}">订单</button></td></tr>`).join("") || `<tr><td colspan="8"><div class="admin-empty">没有符合条件的用户</div></td></tr>`;
     root.innerHTML = adminShell("users", `${head("用户管理", "维护会员资料、分销身份与账户状态；用户下单和分销记录可从其他工作台追溯。")}
       <div class="stats-row">${stat("用户总数", state.users.length, "当前演示用户档案")}${stat("分销员", state.users.filter(item => item.distributor).length, "已开通分销身份")}${stat("会员积分", state.users.reduce((sum, item) => sum + Number(item.points || 0), 0).toLocaleString(), "用户成长积分")}${stat("累计消费", money(state.users.reduce((sum, item) => sum + Number(item.spend || 0), 0)), "用户档案汇总")}</div>
-      ${panel("用户列表", `<div class="table-wrap"><table class="admin-table"><thead><tr><th>用户</th><th>会员等级</th><th>积分</th><th>订单数</th><th>累计消费</th><th>分销身份</th><th>状态</th><th>操作</th></tr></thead><tbody>${users || `<tr><td colspan="8"><div class="admin-empty">暂无用户</div></td></tr>`}</tbody></table></div>`, "修改状态后用户端账号状态同步更新")}`);
+      ${panel("用户列表", `<div class="panel-body"><div class="filters">
+        <label class="admin-search"><input data-list-filter="users" data-filter="query" type="search" placeholder="用户 ID / 姓名 / 手机号" value="${esc(userFilter.query)}"></label>
+        <select class="admin-select" data-list-filter="users" data-filter="tier"><option value="all">全部会员等级</option>${tiers.map(tier => `<option value="${esc(tier)}" ${userFilter.tier === tier ? "selected" : ""}>${esc(tier)}</option>`).join("")}</select>
+        <select class="admin-select" data-list-filter="users" data-filter="status"><option value="all">全部账号状态</option><option value="active" ${userFilter.status === "active" ? "selected" : ""}>正常</option><option value="disabled" ${userFilter.status === "disabled" ? "selected" : ""}>已停用</option></select>
+        <select class="admin-select" data-list-filter="users" data-filter="distributor"><option value="all">全部分销身份</option><option value="true" ${userFilter.distributor === "true" ? "selected" : ""}>分销员</option><option value="false" ${userFilter.distributor === "false" ? "selected" : ""}>普通用户</option></select>
+      </div></div><div class="table-wrap"><table class="admin-table"><thead><tr><th>用户</th><th>会员等级</th><th>积分</th><th>订单数</th><th>累计消费</th><th>分销身份</th><th>状态</th><th>操作</th></tr></thead><tbody>${users}</tbody></table></div>${paged.html}`, `${filtered.length} 位用户`)}`);
   }
 
   function shipForm(orderId) {
@@ -368,8 +545,15 @@
     if (!control) return;
     const { action, id } = control.dataset;
     try {
-      if (action === "order-filter") {
+      if (action === "admin-page") {
+        const listId = control.dataset.list;
+        if (!filterState[listId] || !Number.isInteger(Number(control.dataset.page))) return;
+        pageState[listId] = Number(control.dataset.page) || 1;
+        rerenderList(listId);
+        return;
+      } else if (action === "order-filter") {
         orderFilter = control.dataset.value;
+        pageState.orders = 1;
         renderOrders();
       } else if (action === "ship") shipForm(id);
       else if (action === "cancel-order") {
@@ -458,6 +642,8 @@
       <label class="field">使用门槛<input name="threshold" type="number" min="0" value="199"></label>
       <label class="field">发放数量<input name="stock" type="number" min="1" value="100"></label>
       <label class="field">有效天数<input name="validDays" type="number" min="1" value="30"></label>
+      <label class="field">活动开始时间<input name="startAt" type="datetime-local" step="1" required value="${localDateTimeValue()}"></label>
+      <label class="field">活动截至时间<input name="endAt" type="datetime-local" step="1" required value="${localDateTimeValue(30 * 86400)}"></label>
     </div></form>`, `<button class="secondary-btn" data-modal-close>取消</button><button class="primary-btn small" data-action="save-coupon">创建优惠券</button>`);
     backdrop.querySelector("[data-action='save-coupon']").addEventListener("click", () => {
       const formElement = backdrop.querySelector("#coupon-form");
@@ -466,8 +652,11 @@
       const type = form.get("type");
       const value = Number(form.get("value"));
       if (type === "rate" && value > 99) return toast("折扣券需填写 1–99 的折扣率");
+      const startAt = String(form.get("startAt"));
+      const endAt = String(form.get("endAt"));
+      if (!validActivityWindow(startAt, endAt)) return toast("活动截至时间必须晚于开始时间");
       const id = `C${Date.now().toString().slice(-6)}`;
-      state.coupons.unshift({ id, name: String(form.get("name")).trim(), type, value, threshold: Number(form.get("threshold")), stock: Number(form.get("stock")), claimed: 0, validDays: Number(form.get("validDays")), status: "active" });
+      state.coupons.unshift({ id, name: String(form.get("name")).trim(), type, value, threshold: Number(form.get("threshold")), stock: Number(form.get("stock")), claimed: 0, validDays: Number(form.get("validDays")), startAt, endAt, status: "active" });
       write(state); closeModal(); renderMarketing(); toast("优惠券已创建，小程序营销中心可领取");
     });
   }
@@ -477,8 +666,8 @@
       <label class="field" style="grid-column:1/-1">活动名称<input name="name" required placeholder="例如：秋日焕新季"></label>
       <label class="field" style="grid-column:1/-1">活动说明<input name="subtitle" required placeholder="填写用户端展示的活动说明"></label>
       <label class="field">活动角标<input name="badge" value="限时活动"></label>
-      <label class="field">开始日期<input name="startAt" type="date" required value="2026-10-19"></label>
-      <label class="field">结束日期<input name="endAt" type="date" required value="2026-10-26"></label>
+      <label class="field">开始时间<input name="startAt" type="datetime-local" step="1" required value="${localDateTimeValue()}"></label>
+      <label class="field">截至时间<input name="endAt" type="datetime-local" step="1" required value="${localDateTimeValue(7 * 86400)}"></label>
     </div></form>`, `<button class="secondary-btn" data-modal-close>取消</button><button class="primary-btn small" data-action="save-campaign">创建活动</button>`);
     backdrop.querySelector("[data-action='save-campaign']").addEventListener("click", () => {
       const formElement = backdrop.querySelector("#campaign-form");
@@ -487,7 +676,7 @@
       const name = String(form.get("name")).trim();
       const startAt = String(form.get("startAt"));
       const endAt = String(form.get("endAt"));
-      if (endAt < startAt) return toast("结束日期不能早于开始日期");
+      if (!validActivityWindow(startAt, endAt)) return toast("活动截至时间必须晚于开始时间");
       state.campaigns.unshift({ id: `A${Date.now().toString().slice(-8)}`, name, subtitle: String(form.get("subtitle")).trim(), badge: String(form.get("badge")).trim(), type: "campaign", status: "active", startAt, endAt, productIds: [] });
       write(state); closeModal(); renderMarketingPage(); toast("主题活动已创建");
     });
@@ -498,11 +687,13 @@
     const products = state.products.filter(item => item.status === "on");
     const productOptions = products.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join("");
     const fields = isFlash
-      ? `<label class="field">秒杀价<input name="price" type="number" min="0.01" step="0.01" required></label><label class="field">活动库存<input name="quota" type="number" min="1" required value="50"></label><label class="field">开始时间<input name="startAt" type="time" required value="10:00"></label><label class="field">结束时间<input name="endAt" type="time" required value="22:00"></label>`
+      ? `<label class="field">秒杀价<input name="price" type="number" min="0.01" step="0.01" required></label><label class="field">活动库存<input name="quota" type="number" min="1" required value="50"></label>`
       : `<label class="field">拼团价<input name="groupPrice" type="number" min="0.01" step="0.01" required></label><label class="field">成团人数<input name="targetMembers" type="number" min="2" required value="3"></label><label class="field">活动时长<input name="expiresIn" value="24 小时" required></label>`;
     const backdrop = openModal(isFlash ? "新建秒杀" : "新建拼团", `<form id="sale-form"><div class="form-grid">
       <label class="field" style="grid-column:1/-1">活动商品<select name="productId">${productOptions}</select></label>
       ${isFlash ? "" : `<label class="field" style="grid-column:1/-1">拼团标题<input name="title" required placeholder="例如：好友一起拼"></label>`}
+      <label class="field">活动开始时间<input name="startAt" type="datetime-local" step="1" required value="${localDateTimeValue()}"></label>
+      <label class="field">活动截至时间<input name="endAt" type="datetime-local" step="1" required value="${localDateTimeValue(7 * 86400)}"></label>
       ${fields}
     </div></form>`, `<button class="secondary-btn" data-modal-close>取消</button><button class="primary-btn small" data-action="save-sale">创建${isFlash ? "秒杀" : "拼团"}</button>`);
     backdrop.querySelector("[data-action='save-sale']").addEventListener("click", () => {
@@ -511,15 +702,18 @@
       const form = new FormData(formElement);
       const product = products.find(item => item.id === form.get("productId"));
       if (!product) return toast("请先创建在售商品");
+      const startAt = String(form.get("startAt"));
+      const endAt = String(form.get("endAt"));
+      if (!validActivityWindow(startAt, endAt)) return toast("活动截至时间必须晚于开始时间");
       const id = `${isFlash ? "FS" : "GD"}${Date.now().toString().slice(-6)}`;
       if (isFlash) {
         const price = Number(form.get("price"));
         if (price >= Number(product.price)) return toast("秒杀价需低于商品售价");
-        state.flashSales.unshift({ id, productId: product.id, title: "限时秒杀", price, originalPrice: Number(product.price), quota: Number(form.get("quota")), sold: 0, startAt: form.get("startAt"), endAt: form.get("endAt"), status: "active" });
+        state.flashSales.unshift({ id, productId: product.id, title: "限时秒杀", price, originalPrice: Number(product.price), quota: Number(form.get("quota")), sold: 0, startAt, endAt, status: "active" });
       } else {
         const groupPrice = Number(form.get("groupPrice"));
         if (groupPrice >= Number(product.price)) return toast("拼团价需低于商品售价");
-        state.groupDeals.unshift({ id, productId: product.id, title: String(form.get("title")).trim(), groupPrice, originalPrice: Number(product.price), targetMembers: Number(form.get("targetMembers")), joined: 0, expiresIn: String(form.get("expiresIn")).trim(), status: "active" });
+        state.groupDeals.unshift({ id, productId: product.id, title: String(form.get("title")).trim(), groupPrice, originalPrice: Number(product.price), targetMembers: Number(form.get("targetMembers")), joined: 0, expiresIn: String(form.get("expiresIn")).trim(), startAt, endAt, status: "active" });
       }
       write(state); closeModal(); renderMarketingPage(); toast("营销活动已创建，小程序端可立即参与");
     });
@@ -550,6 +744,7 @@
     else if (page === "overview") renderOverview();
   });
 
+  bindListFilterEvents();
   const page = root.dataset.page;
   if (page === "overview") renderOverview();
   else if (page === "orders") renderOrders();

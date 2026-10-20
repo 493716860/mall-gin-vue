@@ -4,6 +4,47 @@
   const uid = prefix => `${prefix}${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 90 + 10)}`;
   const cents = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 
+  function localTimestamp(value, endBoundary = false) {
+    if (value instanceof Date) return value.getTime();
+    if (typeof value === "number") return value;
+    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (!match) return NaN;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const hasTime = match[4] !== undefined;
+    const hour = hasTime ? Number(match[4]) : endBoundary ? 23 : 0;
+    const minute = hasTime ? Number(match[5]) : endBoundary ? 59 : 0;
+    const second = hasTime ? Number(match[6] || 0) : endBoundary ? 59 : 0;
+    const date = new Date(year, month - 1, day, hour, minute, second);
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day
+      || date.getHours() !== hour || date.getMinutes() !== minute || date.getSeconds() !== second) return NaN;
+    return date.getTime();
+  }
+
+  function localDateString(value) {
+    const match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : "";
+  }
+
+  function isWithinTimeWindow(item, at = Date.now()) {
+    const now = localTimestamp(at);
+    const start = localTimestamp(item?.startAt);
+    const end = localTimestamp(item?.endAt, true);
+    return Number.isFinite(now) && Number.isFinite(start) && Number.isFinite(end) && start <= end && now >= start && now <= end + 999;
+  }
+
+  function localDateTime(date) {
+    const pad = value => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  }
+
+  function addLocalDays(dateValue, days) {
+    const date = new Date(`${dateValue}T00:00:00`);
+    date.setDate(date.getDate() + days);
+    return localDateTime(date).slice(0, 10);
+  }
+
   function findOrder(state, id) {
     return state.orders.find(order => order.id === id);
   }
@@ -29,10 +70,13 @@
     return Number.isFinite(price) && price > 0 && price <= Number(sku.price) ? cents(price) : null;
   }
 
-  function claimIsInDate(claim) {
+  function claimIsInDate(claim, coupon) {
+    if (!coupon || coupon.status !== "active" || !isWithinTimeWindow(coupon)) return false;
     const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    return (!claim.validFrom || today >= claim.validFrom) && (!claim.expiresAt || today <= claim.expiresAt);
+    const today = localDateTime(now).slice(0, 10);
+    const validFrom = localDateString(claim.validFrom || claim.receivedAt);
+    const expiresAt = localDateString(claim.expiresAt);
+    return (!validFrom || today >= validFrom) && (!expiresAt || today <= expiresAt);
   }
 
   function syncUserTier(state) {
@@ -242,11 +286,13 @@
     const referralChain = resolveReferralChain(state, state.user.id);
     let promo;
     if (promoType === "flash") {
-      promo = state.flashSales.find(item => item.id === promoId && item.status === "active");
-      if (!promo || Number(promo.sold) >= Number(promo.quota)) throw new Error("秒杀名额已售罄或活动已结束");
+      promo = state.flashSales.find(item => item.id === promoId);
+      if (!promo || promo.status !== "active" || !isWithinTimeWindow(promo) || Number(promo.sold) >= Number(promo.quota)) {
+        throw new Error("秒杀名额已售罄或活动已结束");
+      }
     } else if (promoType === "group") {
-      promo = state.groupDeals.find(item => item.id === promoId && item.status === "active");
-      if (!promo) throw new Error("拼团活动暂不可参与");
+      promo = state.groupDeals.find(item => item.id === promoId);
+      if (!promo || promo.status !== "active" || !isWithinTimeWindow(promo)) throw new Error("拼团活动暂不可参与");
     }
     if (promoType && !["flash", "group", "campaign"].includes(promoType)) throw new Error("不支持的营销活动");
     if (promoType && (lines || []).length !== 1) throw new Error("活动商品请单独下单");
@@ -298,10 +344,9 @@
     let couponDiscount = 0;
     let couponClaimId = "";
     if (couponId) {
-      const claim = state.claimedCoupons.find(item =>
-        (item.claimId === couponId || item.id === couponId) && claimIsInDate(item));
+      const claim = state.claimedCoupons.find(item => item.claimId === couponId || item.id === couponId);
       const coupon = state.coupons.find(item => item.id === (claim?.couponId || claim?.id));
-      if (!claim || claim.status !== "available" || !coupon || subtotal < Number(coupon.threshold || 0)) {
+      if (!claim || claim.status !== "available" || !claimIsInDate(claim, coupon) || subtotal < Number(coupon.threshold || 0)) {
         throw new Error("该优惠券不可用或未达到使用门槛");
       }
       const couponValue = Number(coupon.value);
@@ -1061,11 +1106,24 @@
   function claimCoupon(couponId) {
     const state = read();
     const coupon = state.coupons.find(item => item.id === couponId && item.status === "active");
-    if (!coupon || Number(coupon.stock) <= 0) throw new Error("优惠券已领完或已结束");
+    if (!coupon || !isWithinTimeWindow(coupon) || Number(coupon.stock) <= 0) throw new Error("优惠券已领完或已结束");
     if (state.claimedCoupons.some(item => item.couponId === couponId || item.id === couponId)) throw new Error("你已领取过这张优惠券");
+    const received = new Date();
+    const receivedAt = localDateTime(received);
+    const receivedDate = receivedAt.slice(0, 10);
+    const configuredDays = Number(coupon.validDays || 1);
+    const validDays = Math.max(1, Number.isFinite(configuredDays) ? Math.floor(configuredDays) : 1);
+    const expiresAt = addLocalDays(receivedDate, validDays - 1);
     coupon.claimed = Number(coupon.claimed || 0) + 1;
-    coupon.stock -= 1;
-    state.claimedCoupons.unshift({ claimId: uid("CC"), couponId, status: "available", receivedAt: nowText() });
+    coupon.stock = Number(coupon.stock) - 1;
+    state.claimedCoupons.unshift({
+      claimId: uid("CC"),
+      couponId,
+      status: "available",
+      receivedAt,
+      validFrom: receivedDate,
+      expiresAt
+    });
     write(state);
     return coupon;
   }
@@ -1081,18 +1139,23 @@
     state.birthdayCouponIssues ||= [];
     const couponId = state.membershipSettings?.birthdayCouponId;
     const coupon = state.coupons.find(item => item.id === couponId && item.status === "active");
-    if (!coupon || Number(coupon.stock) <= 0) return state;
+    if (!coupon || !isWithinTimeWindow(coupon) || Number(coupon.stock) <= 0) return state;
     if (state.birthdayCouponIssues.some(item => item.userId === state.user.id && Number(item.year) === year)) return state;
-    const lastDay = String(new Date(year, now.getMonth() + 1, 0).getDate()).padStart(2, "0");
-    const today = `${year}-${month}-${String(now.getDate()).padStart(2, "0")}`;
+    const today = localDateTime(now).slice(0, 10);
+    const monthStart = `${year}-${month}-01`;
+    const monthEnd = `${year}-${month}-${String(new Date(year, now.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
+    const templateStart = localDateString(coupon.startAt);
+    const templateEnd = localDateString(coupon.endAt);
+    const validFrom = templateStart && templateStart > monthStart ? templateStart : monthStart;
+    const expiresAt = templateEnd && templateEnd < monthEnd ? templateEnd : monthEnd;
     const claimId = uid("CC");
     const claim = {
       claimId,
       couponId,
       status: "available",
-      receivedAt: today,
-      validFrom: `${year}-${month}-01`,
-      expiresAt: `${year}-${month}-${lastDay}`,
+      receivedAt: localDateTime(now),
+      validFrom,
+      expiresAt,
       source: "birthday",
       sourceYear: year
     };
@@ -1106,8 +1169,8 @@
 
   function joinGroup(dealId, orderId) {
     const state = read();
-    const deal = state.groupDeals.find(item => item.id === dealId && item.status === "active");
-    if (!deal) throw new Error("拼团活动暂不可参与");
+    const deal = state.groupDeals.find(item => item.id === dealId);
+    if (!deal || deal.status !== "active" || !isWithinTimeWindow(deal)) throw new Error("拼团活动暂不可参与");
     const order = findOrder(state, orderId);
     if (!order || order.promoType !== "group" || order.promoId !== dealId || order.status !== "pending_payment") {
       throw new Error("请先创建该拼团商品订单");
@@ -1664,8 +1727,8 @@
 
   function participateCampaign(campaignId) {
     const state = read();
-    const campaign = state.campaigns.find(item => item.id === campaignId && item.status === "active");
-    if (!campaign) throw new Error("活动暂不可参与");
+    const campaign = state.campaigns.find(item => item.id === campaignId);
+    if (!campaign || campaign.status !== "active" || !isWithinTimeWindow(campaign)) throw new Error("活动暂不可参与");
     state.campaignParticipations ||= [];
     const prior = state.campaignParticipations.find(item => item.campaignId === campaignId && item.userId === state.user.id);
     if (prior) return prior;
@@ -1684,6 +1747,7 @@
     resolveReferralChain,
     resolveShareToken,
     quoteShipping,
+    isWithinTimeWindow,
     releaseMaturedCommissions,
     findOrder,
     createOrder,

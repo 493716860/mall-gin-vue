@@ -47,6 +47,25 @@
 
   const money = value => `¥${Number(value || 0).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+  function adminPage(items, page = 1, pageSize = 5, listId = "rows") {
+    const total = items.length;
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    const current = Math.max(1, Math.min(pageCount, Number(page) || 1));
+    const startPage = Math.max(1, Math.min(current - 2, pageCount - 4));
+    const endPage = Math.min(pageCount, startPage + 4);
+    const button = (target, label, disabled = false, active = false) =>
+      `<button type="button" class="page-num ${active ? "active" : ""}" data-action="admin-page" data-list="${escapeHtml(listId)}" data-page="${target}" ${disabled ? "disabled" : ""} ${active ? 'aria-current="page"' : ""}>${label}</button>`;
+    const numbers = Array.from({ length: endPage - startPage + 1 }, (_, index) => startPage + index)
+      .map(value => button(value, value, false, value === current)).join("");
+    return {
+      rows: items.slice((current - 1) * pageSize, current * pageSize),
+      page: current,
+      pageCount,
+      total,
+      html: `<div class="pagination"><span>共 ${total.toLocaleString("zh-CN")} 条 · 第 ${current} / ${pageCount} 页</span><div class="page-numbers">${button(current - 1, "‹", current <= 1)}${numbers}${button(current + 1, "›", current >= pageCount)}</div></div>`
+    };
+  }
+
   function toast(message) {
     let el = document.querySelector(".toast");
     if (!el) {
@@ -171,5 +190,5 @@
     </div>`;
   }
 
-  window.MallUI = { icon, escapeHtml, money, toast, openModal, closeModal, tabbar, messageEntry, adminShell };
+  window.MallUI = { icon, escapeHtml, money, adminPage, toast, openModal, closeModal, tabbar, messageEntry, adminShell };
 })();

@@ -340,20 +340,20 @@
       }
     ],
     coupons: [
-      { id: "C20", name: "满 199 减 20", type: "amount", value: 20, threshold: 199, stock: 280, claimed: 64, status: "active", validDays: 30 },
-      { id: "C50", name: "满 499 减 50", type: "amount", value: 50, threshold: 499, stock: 160, claimed: 37, status: "active", validDays: 30 },
-      { id: "C95", name: "全场 95 折", type: "rate", value: 95, threshold: 0, stock: 500, claimed: 214, status: "active", validDays: 14 }
+      { id: "C20", name: "满 199 减 20", type: "amount", value: 20, threshold: 199, stock: 280, claimed: 64, status: "active", validDays: 30, startAt: "2026-10-01T00:00:00", endAt: "2026-12-31T23:59:59" },
+      { id: "C50", name: "满 499 减 50", type: "amount", value: 50, threshold: 499, stock: 160, claimed: 37, status: "active", validDays: 30, startAt: "2026-10-01T00:00:00", endAt: "2026-12-31T23:59:59" },
+      { id: "C95", name: "全场 95 折", type: "rate", value: 95, threshold: 0, stock: 500, claimed: 214, status: "active", validDays: 14, startAt: "2026-10-01T00:00:00", endAt: "2026-12-31T23:59:59" }
     ],
-    claimedCoupons: [{ id: "C20", status: "available", receivedAt: "2026-10-18" }],
+    claimedCoupons: [{ id: "C20", status: "available", receivedAt: "2026-10-18", validFrom: "2026-10-18", expiresAt: "2026-11-16" }],
     campaigns: [
-      { id: "A618", name: "秋日焕新季", type: "campaign", subtitle: "精选好物限时直降，会员再享专属礼遇", status: "active", startAt: "2026-10-16", endAt: "2026-10-26", badge: "全场活动", productIds: ["p01", "p03", "p05"] },
-      { id: "A24", name: "会员周末礼", type: "campaign", subtitle: "周末下单加赠双倍成长积分", status: "active", startAt: "2026-10-18", endAt: "2026-10-20", badge: "会员专享", productIds: ["p02", "p06"] }
+      { id: "A618", name: "秋日焕新季", type: "campaign", subtitle: "精选好物限时直降，会员再享专属礼遇", status: "active", startAt: "2026-10-16T00:00:00", endAt: "2026-10-26T23:59:59", badge: "全场活动", productIds: ["p01", "p03", "p05"] },
+      { id: "A24", name: "会员周末礼", type: "campaign", subtitle: "周末下单加赠双倍成长积分", status: "active", startAt: "2026-10-18T00:00:00", endAt: "2026-10-20T23:59:59", badge: "会员专享", productIds: ["p02", "p06"] }
     ],
     flashSales: [
-      { id: "FS01", productId: "p02", title: "每日限时秒杀", price: 999, originalPrice: 1299, quota: 80, sold: 28, startAt: "10:00", endAt: "22:00", status: "active" }
+      { id: "FS01", productId: "p02", title: "每日限时秒杀", price: 999, originalPrice: 1299, quota: 80, sold: 28, startAt: "2026-10-20T10:00:00", endAt: "2026-10-20T22:00:00", status: "active" }
     ],
     groupDeals: [
-      { id: "GD01", productId: "p07", title: "好友一起拼", groupPrice: 329, originalPrice: 399, targetMembers: 3, joined: 2, status: "active", expiresIn: "23:45:00" }
+      { id: "GD01", productId: "p07", title: "好友一起拼", groupPrice: 329, originalPrice: 399, targetMembers: 3, joined: 2, status: "active", expiresIn: "23:45:00", startAt: "2026-10-19T00:00:00", endAt: "2026-10-26T23:59:59" }
     ],
     groupParticipations: [{ id: "GP01", dealId: "GD01", groupCode: "T8K2", joined: 2, target: 3, status: "assembling", createdAt: "2026-10-19 09:42" }],
     commissions: [
@@ -512,6 +512,162 @@
   defaults.addresses = defaults.addresses || [
     { id: "ADDR-001", name: "林女士", phone: "138****6218", province: "上海市", city: "上海市", district: "徐汇区", detail: "漕溪北路 88 号", isDefault: true }
   ];
+
+  function localDateTime(date) {
+    const pad = value => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  }
+
+  function localDate(date) {
+    return localDateTime(date).slice(0, 10);
+  }
+
+  function parseLocalDateTime(value) {
+    const match = String(value || "").match(/^(\d{4})[-/](\d{2})[-/](\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (!match) return null;
+    const parts = match.slice(1, 4).map(Number);
+    const hasTime = match[4] !== undefined;
+    const hour = hasTime ? Number(match[4]) : 0;
+    const minute = hasTime ? Number(match[5]) : 0;
+    const second = hasTime ? Number(match[6] || 0) : 0;
+    const date = new Date(parts[0], parts[1] - 1, parts[2], hour, minute, second);
+    if (date.getFullYear() !== parts[0] || date.getMonth() !== parts[1] - 1 || date.getDate() !== parts[2]
+      || date.getHours() !== hour || date.getMinutes() !== minute || date.getSeconds() !== second) return null;
+    return { date, hasTime };
+  }
+
+  function normalizedDateTime(value, preferred, fallback, boundary) {
+    const raw = String(value || "");
+    const dateOnly = raw.match(/^\d{4}-\d{2}-\d{2}$/);
+    const timeOnly = raw.match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);
+    if (dateOnly) {
+      const preferredParts = parseLocalDateTime(preferred);
+      const clock = preferredParts?.hasTime
+        ? localDateTime(preferredParts.date).slice(11)
+        : boundary === "end" ? "23:59:59" : "00:00:00";
+      return `${raw}T${clock}`;
+    }
+    if (timeOnly) {
+      const preferredParts = parseLocalDateTime(preferred) || parseLocalDateTime(fallback);
+      const day = preferredParts ? localDate(preferredParts.date) : localDate(new Date());
+      return `${day}T${timeOnly[1]}:${timeOnly[2]}:${timeOnly[3] || "00"}`;
+    }
+    const parts = parseLocalDateTime(raw);
+    return parts ? localDateTime(parts.date) : String(preferred || fallback || "");
+  }
+
+  function addLocalDays(dateValue, days) {
+    const date = parseLocalDateTime(dateValue)?.date || new Date();
+    date.setDate(date.getDate() + days);
+    return localDateTime(date);
+  }
+
+  function durationMs(value) {
+    const raw = String(value || "");
+    const clock = raw.match(/^(\d+):(\d{2})(?::(\d{2}))?$/);
+    if (clock) return (Number(clock[1]) * 3600 + Number(clock[2]) * 60 + Number(clock[3] || 0)) * 1000;
+    const amount = Number(raw.match(/\d+(?:\.\d+)?/)?.[0] || 24);
+    if (/天|日/.test(raw)) return amount * 86400000;
+    if (/分/.test(raw)) return amount * 60000;
+    return amount * 3600000;
+  }
+
+  function normalizeMarketingDates(state) {
+    const now = new Date();
+    const todayStart = localDateTime(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+    const defaultsFor = (list, id) => list.find(item => item.id === id);
+    let changed = false;
+    const assign = (record, key, value) => {
+      if (record[key] !== value) {
+        record[key] = value;
+        changed = true;
+      }
+    };
+
+    state.coupons = (state.coupons || []).map(coupon => {
+      const fallback = defaultsFor(defaults.coupons, coupon.id);
+      const startFallback = todayStart;
+      const endFallback = `${localDate(new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()))}T23:59:59`;
+      assign(coupon, "startAt", normalizedDateTime(coupon.startAt, fallback?.startAt, startFallback, "start"));
+      assign(coupon, "endAt", normalizedDateTime(coupon.endAt, fallback?.endAt, endFallback, "end"));
+      return coupon;
+    });
+
+    state.campaigns = (state.campaigns || []).map(campaign => {
+      const fallback = defaultsFor(defaults.campaigns, campaign.id);
+      assign(campaign, "startAt", normalizedDateTime(
+        campaign.startAt, fallback?.startAt, todayStart, "start"
+      ));
+      assign(campaign, "endAt", normalizedDateTime(
+        campaign.endAt, fallback?.endAt, addLocalDays(todayStart, 7).replace(/T.*$/, "T23:59:59"), "end"
+      ));
+      return campaign;
+    });
+
+    state.flashSales = (state.flashSales || []).map(sale => {
+      const fallback = defaultsFor(defaults.flashSales, sale.id);
+      const fallbackStart = fallback?.startAt || localDateTime(now);
+      const fallbackEnd = fallback?.endAt || addLocalDays(localDateTime(now), 1);
+      const rawStart = String(sale.startAt || fallbackStart);
+      const rawEnd = String(sale.endAt || fallbackEnd);
+      let startAt = normalizedDateTime(rawStart, fallbackStart, localDateTime(now), "start");
+      let endAt = normalizedDateTime(rawEnd, fallbackEnd, addLocalDays(localDateTime(now), 1), "end");
+      const timeOnly = /^\d{2}:\d{2}(?::\d{2})?$/.test(rawStart) || /^\d{2}:\d{2}(?::\d{2})?$/.test(rawEnd);
+      if (timeOnly && parseLocalDateTime(endAt)?.date <= parseLocalDateTime(startAt)?.date) {
+        const startDate = parseLocalDateTime(startAt).date;
+        const endDate = parseLocalDateTime(endAt).date;
+        if (endDate <= startDate) endAt = addLocalDays(endAt, 1);
+      }
+      if (timeOnly && !fallback && now > parseLocalDateTime(endAt)?.date) {
+        startAt = addLocalDays(startAt, 1);
+        endAt = addLocalDays(endAt, 1);
+      }
+      assign(sale, "startAt", startAt);
+      assign(sale, "endAt", endAt);
+      return sale;
+    });
+
+    state.groupDeals = (state.groupDeals || []).map(deal => {
+      const fallback = defaultsFor(defaults.groupDeals, deal.id);
+      const hasDefaultWindow = fallback?.startAt && fallback?.endAt;
+      const startValue = deal.startAt || (hasDefaultWindow ? fallback.startAt : "");
+      const endValue = deal.endAt || (hasDefaultWindow ? fallback.endAt : "");
+      const startAt = normalizedDateTime(startValue, fallback?.startAt, localDateTime(now), "start");
+      const startDate = parseLocalDateTime(startAt)?.date || now;
+      const duration = Math.min(Math.max(durationMs(deal.expiresIn), 3600000), 30 * 86400000);
+      const durationEnd = localDateTime(new Date(startDate.getTime() + duration));
+      const endAt = normalizedDateTime(endValue, fallback?.endAt, durationEnd, "end");
+      assign(deal, "startAt", startAt);
+      assign(deal, "endAt", endAt);
+      return deal;
+    });
+
+    state.claimedCoupons = (state.claimedCoupons || []).map(claim => {
+      const couponId = claim.couponId || claim.id;
+      const coupon = state.coupons.find(item => item.id === couponId);
+      if (!coupon) return claim;
+      const receivedParts = parseLocalDateTime(claim.receivedAt);
+      const receivedDate = receivedParts ? localDate(receivedParts.date) : localDate(now);
+      const configuredDays = Number(coupon.validDays || 30);
+      const validDays = Math.max(1, Number.isFinite(configuredDays) ? Math.floor(configuredDays) : 30);
+      let validFrom = claim.validFrom || (claim.source === "birthday"
+        ? `${receivedDate.slice(0, 4)}-${receivedDate.slice(5, 7)}-01`
+        : receivedDate);
+      let expiresAt = claim.expiresAt || (claim.source === "birthday"
+        ? `${receivedDate.slice(0, 7)}-${String(new Date(Number(receivedDate.slice(0, 4)), Number(receivedDate.slice(5, 7)), 0).getDate()).padStart(2, "0")}`
+        : addLocalDays(`${receivedDate}T00:00:00`, validDays - 1).slice(0, 10));
+      const templateStart = parseLocalDateTime(coupon.startAt)?.date;
+      const templateEnd = parseLocalDateTime(coupon.endAt)?.date;
+      if (claim.source === "birthday") {
+        if (templateStart && validFrom < localDate(templateStart)) validFrom = localDate(templateStart);
+        if (templateEnd && expiresAt > localDate(templateEnd)) expiresAt = localDate(templateEnd);
+      }
+      assign(claim, "validFrom", validFrom);
+      assign(claim, "expiresAt", expiresAt);
+      return claim;
+    });
+    return changed;
+  }
 
   function read() {
     try {
@@ -713,6 +869,16 @@
           ? { ...item, promoterId: "u1001", level: 1, rate: 6, amount: 155.88, tierId: "silver", shareTokenId: "SH-LIN-01" }
           : item);
       }
+      if (normalizeMarketingDates(state)) {
+        localStorage.setItem(KEY, JSON.stringify({
+          ...parsed,
+          coupons: state.coupons,
+          claimedCoupons: state.claimedCoupons,
+          campaigns: state.campaigns,
+          flashSales: state.flashSales,
+          groupDeals: state.groupDeals
+        }));
+      }
       return state;
     } catch {
       return JSON.parse(JSON.stringify(defaults));
@@ -720,6 +886,7 @@
   }
 
   function write(next) {
+    normalizeMarketingDates(next);
     localStorage.setItem(KEY, JSON.stringify(next));
     window.dispatchEvent(new CustomEvent("mall:data-updated", { detail: next }));
   }

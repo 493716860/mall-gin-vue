@@ -43,7 +43,8 @@
   };
   let state = read();
   let activeTab = new URLSearchParams(location.search).get("tab") || "overview";
-  let searchText = "";
+  const listPages = Object.create(null);
+  const listFilters = Object.create(null);
 
   const user = id => state.users.find(item => item.id === id);
   const profile = id => state.promoterProfiles.find(item => item.userId === id);
@@ -68,6 +69,48 @@
   }
   function page(title, description, body, actions = "") {
     root.innerHTML = adminShell("distribution", `${head(title, description, actions)}${tabs()}${body}`);
+  }
+  function filtersFor(listId) {
+    if (!listFilters[listId]) listFilters[listId] = { query: "", status: "", type: "" };
+    return listFilters[listId];
+  }
+  function filterSelect(listId, field, label, options) {
+    const selected = filtersFor(listId)[field];
+    return `<select data-admin-filter data-list="${esc(listId)}" data-filter-field="${esc(field)}" aria-label="${esc(label)}"><option value="">全部${esc(label)}</option>${options.map(option => {
+      const [value, text] = Array.isArray(option) ? option : [option, statusNames[option] || option];
+      return `<option value="${esc(value)}" ${selected === value ? "selected" : ""}>${esc(text)}</option>`;
+    }).join("")}</select>`;
+  }
+  function filterBar(listId, placeholder, { statuses = [], types = [], note = "" } = {}) {
+    const filter = filtersFor(listId);
+    return `<div class="filters"><label class="admin-search"><input type="search" data-admin-filter data-list="${esc(listId)}" data-filter-field="query" value="${esc(filter.query)}" placeholder="${esc(placeholder)}"></label>${statuses.length ? filterSelect(listId, "status", "状态", statuses) : ""}${types.length ? filterSelect(listId, "type", "类型", types) : ""}${note ? `<span class="inline-help">${note}</span>` : ""}</div>`;
+  }
+  function distinctOptions(items, getter, labeler = value => statusNames[value] || value) {
+    return [...new Set(items.map(getter).filter(Boolean))].sort().map(value => [value, labeler(value)]);
+  }
+  function pagedTable(items, listId, headers, renderRow, className = "") {
+    const result = window.MallUI.adminPage(items, listPages[listId] || 1, 5, listId);
+    listPages[listId] = result.page;
+    return `${table(headers, result.rows.map(renderRow).join(""), className)}${result.html}`;
+  }
+  function matchesQuery(query, values) {
+    const normalized = String(query || "").trim().toLowerCase();
+    return !normalized || values.filter(value => value !== undefined && value !== null).join(" ").toLowerCase().includes(normalized);
+  }
+  function renderList(listId) {
+    const renderers = {
+      applications: renderApplications,
+      promoters: renderPromoters,
+      relations: renderRelations,
+      "rule-versions": renderRules,
+      "tier-rules": renderRules,
+      ledger: renderLedger,
+      commissions: renderLedger,
+      payouts: renderPayouts,
+      risk: renderRisk,
+      audit: renderAudit
+    };
+    renderers[listId]?.();
   }
 
   function allAccountTotals() {
@@ -106,53 +149,61 @@
 
   function renderApplications() {
     state = read();
-    const rows = state.promoterApplications.filter(item => item.status === "pending" || activeTab !== "applications")
-      .map(item => {
+    const filters = filtersFor("applications");
+    const items = state.promoterApplications.filter(item =>
+      (!filters.status || item.status === filters.status) &&
+      matchesQuery(filters.query, [item.id, item.userId, name(item.userId), user(item.userId)?.phone, item.motivation, item.reviewer, item.reviewNote])
+    );
+    const rows = pagedTable(items, "applications", ["申请编号 / 时间", "申请人", "申请说明", "状态", "审核人 / 时间", "操作"], item => {
         const person = user(item.userId);
         const action = item.status === "pending"
           ? `<button class="text-action" data-action="review-application" data-id="${esc(item.id)}" data-decision="approve">通过</button><button class="text-action danger" data-action="review-application" data-id="${esc(item.id)}" data-decision="reject">拒绝</button>`
           : `<button class="text-action" data-action="application-detail" data-id="${esc(item.id)}">查看记录</button>`;
         return `<tr><td><strong>${esc(item.id)}</strong><small>${esc(item.createdAt || "")}</small></td><td><strong>${esc(person?.name || item.userId)}</strong><small>${esc(item.userId)} · ${esc(person?.phone || "—")}</small></td><td>${esc(item.motivation || "—")}</td><td>${status(item.status)}</td><td>${esc(item.reviewer || "—")}<small>${esc(item.reviewedAt || "")}</small></td><td class="nowrap">${action}</td></tr>`;
-      }).join("");
+      });
     const body = `<div class="stats-row">${stat("全部申请", state.promoterApplications.length, "保留审核历史")}${stat("待审核", state.promoterApplications.filter(item => item.status === "pending").length, "通过后创建推广员档案")}${stat("已通过", state.promoterApplications.filter(item => item.status === "approved").length, "推广资格生效")}${stat("已拒绝", state.promoterApplications.filter(item => item.status === "rejected").length, "允许后续重新申请")}</div>
-      ${panel("推广员入驻申请", table(["申请编号 / 时间", "申请人", "申请说明", "状态", "审核人 / 时间", "操作"], rows), "审核需填写原因并记录审计")}`;
+      ${filterBar("applications", "申请编号 / 用户 / 姓名 / 手机 / 说明", { statuses: distinctOptions(state.promoterApplications, item => item.status) })}
+      <div style="margin-top:12px">${panel("推广员入驻申请", rows, `${items.length} 条匹配记录 · 审核需填写原因并记录审计`)}</div>`;
     page("推广员申请", "审核用户入驻资格，拒绝、再次申请和重新审核均保留历史。", body);
   }
 
   function renderPromoters() {
     state = read();
-    const q = searchText.toLowerCase();
-    const rows = state.promoterProfiles.filter(item => {
+    const filters = filtersFor("promoters");
+    const items = state.promoterProfiles.filter(item => {
       const person = user(item.userId);
-      return !q || `${item.userId} ${person?.name || ""} ${person?.phone || ""}`.toLowerCase().includes(q);
-    }).map(item => {
+      return (!filters.status || item.status === filters.status || item.riskStatus === filters.status) &&
+        matchesQuery(filters.query, [item.userId, person?.name, person?.phone, item.referralCode, item.tierId]);
+    });
+    const rows = pagedTable(items, "promoters", ["推广员", "推广编号 / 团队", "等级", "账户投影", "资格 / 风险", "操作"], item => {
       const person = user(item.userId);
       const members = state.referralRelations.filter(row => row.promoterId === item.userId && row.status === "active").length;
       const totals = window.MallOps.accountSummary(state, item.userId);
       return `<tr><td><strong>${esc(person?.name || item.userId)}</strong><small>${esc(item.userId)} · ${esc(person?.phone || "—")}</small></td><td>${esc(item.referralCode || "—")}<small>有效关系 ${members} 人</small></td><td>${esc(state.distributionTiers.find(row => row.id === item.tierId)?.name || item.tierId)}</td><td>${money(totals.available)}<small>冻结 ${money(totals.frozen)} · 待结算 ${money(totals.pending)}</small></td><td>${status(item.status)}<small>${item.riskStatus === "frozen" ? "风控冻结" : item.riskStatus === "reviewing" ? "风险复核中" : "风险正常"}</small></td><td class="nowrap"><button class="text-action" data-action="promoter-detail" data-id="${esc(item.userId)}">档案</button><button class="text-action danger" data-action="promoter-eligibility" data-id="${esc(item.userId)}" data-value="${item.status === "active" ? "revoked" : "active"}">${item.status === "active" ? "撤销资格" : "恢复资格"}</button><button class="text-action" data-action="promoter-risk" data-id="${esc(item.userId)}" data-value="${item.riskStatus === "frozen" ? "normal" : "frozen"}">${item.riskStatus === "frozen" ? "解除风控冻结" : "风控冻结"}</button></td></tr>`;
-    }).join("");
-    const body = `<div class="filters"><label class="admin-search"><input id="promoter-search" type="search" value="${esc(searchText)}" placeholder="推广员 ID / 姓名 / 手机"></label><span class="inline-help">禁用资格会阻止新关系归因与提现，不改写历史佣金快照。</span></div>
-      <div style="margin-top:12px">${panel("推广员档案", table(["推广员", "推广编号 / 团队", "等级", "账户投影", "资格 / 风险", "操作"], rows), `${state.promoterProfiles.length} 位推广员`)}</div>`;
-    page("推广员档案", "统一查看推广员资格、等级、关系规模、资金分布和风险状态。", body);
-    root.querySelector("#promoter-search")?.addEventListener("input", event => {
-      searchText = event.target.value;
-      const cursor = searchText.length;
-      renderPromoters();
-      const input = root.querySelector("#promoter-search");
-      input?.focus();
-      input?.setSelectionRange(cursor, cursor);
     });
+    const statuses = [...new Set([...state.promoterProfiles.map(item => item.status), ...state.promoterProfiles.map(item => item.riskStatus)].filter(Boolean))];
+    const body = `${filterBar("promoters", "推广员 ID / 姓名 / 手机 / 推广编号", { statuses: statuses.map(value => [value, statusNames[value] || value]), note: "禁用资格会阻止新关系归因与提现，不改写历史佣金快照。" })}
+      <div style="margin-top:12px">${panel("推广员档案", rows, `${items.length} 位匹配推广员`)}</div>`;
+    page("推广员档案", "统一查看推广员资格、等级、关系规模、资金分布和风险状态。", body);
   }
 
   function renderRelations() {
     state = read();
-    const rows = state.referralRelations.filter(item => item.status === "active").map(item => {
+    const filters = filtersFor("relations");
+    const items = state.referralRelations.filter(item =>
+      (!filters.status || item.status === filters.status) &&
+      (!filters.type || item.bindType === filters.type || item.channel === filters.type) &&
+      matchesQuery(filters.query, [item.memberId, name(item.memberId), item.promoterId, name(item.promoterId), item.bindType, item.channel, item.sourceTokenId, item.correctedFrom])
+    );
+    const rows = pagedTable(items, "relations", ["被推广用户", "直接推广员", "层级", "绑定来源", "绑定时间", "操作"], item => {
       const parent = user(item.promoterId);
       const child = user(item.memberId);
-      return `<tr><td><strong>${esc(child?.name || item.memberId)}</strong><small>${esc(item.memberId)}</small></td><td><strong>${esc(parent?.name || item.promoterId)}</strong><small>${esc(item.promoterId)}</small></td><td>直接推荐</td><td>${esc(item.bindType === "admin_correction" ? "后台纠正" : item.channel || "首次分享绑定")}<small>${esc(item.sourceTokenId || item.correctedFrom || "—")}</small></td><td>${esc(item.boundAt || "—")}<small>状态 ${esc(statusNames[item.status] || item.status)}</small></td><td class="nowrap"><button class="text-action" data-action="correct-relation" data-id="${esc(item.memberId)}">纠正关系</button><button class="text-action" data-action="relation-chain" data-id="${esc(item.memberId)}">查看链路</button></td></tr>`;
-    }).join("");
+      const actions = item.status === "active" ? `<button class="text-action" data-action="correct-relation" data-id="${esc(item.memberId)}">纠正关系</button><button class="text-action" data-action="relation-chain" data-id="${esc(item.memberId)}">查看链路</button>` : "—";
+      return `<tr><td><strong>${esc(child?.name || item.memberId)}</strong><small>${esc(item.memberId)}</small></td><td><strong>${esc(parent?.name || item.promoterId)}</strong><small>${esc(item.promoterId)}</small></td><td>直接推荐</td><td>${esc(item.bindType === "admin_correction" ? "后台纠正" : item.channel || "首次分享绑定")}<small>${esc(item.sourceTokenId || item.correctedFrom || "—")}</small></td><td>${esc(item.boundAt || "—")}<small>状态 ${esc(statusNames[item.status] || item.status)}</small></td><td class="nowrap">${actions}</td></tr>`;
+    });
     const body = `<div class="dist-admin-note">归属规则：推广员分享码经服务端校验后，仅为尚未绑定的用户建立首次关系。后续分享不得覆盖；后台纠正需独立权限、理由、环路校验和前后值审计。</div>
-      ${panel("有效推广关系", table(["被推广用户", "直接推广员", "层级", "绑定来源", "绑定时间", "操作"], rows), `${state.referralRelations.filter(item => item.status === "active").length} 条有效关系`)}`;
+      ${filterBar("relations", "用户 / 推广员 / 绑定来源", { statuses: distinctOptions(state.referralRelations, item => item.status), types: distinctOptions(state.referralRelations.flatMap(item => [{ value: item.bindType }, { value: item.channel }]), item => item.value, value => value === "admin_correction" ? "后台纠正" : value) })}
+      <div style="margin-top:12px">${panel("推广关系记录", rows, `${items.length} 条匹配记录`)}</div>`;
     page("推广关系", "维护直接推荐关系，追踪首次绑定来源，并受控处理关系纠正。", body);
   }
 
@@ -166,42 +217,59 @@
       const directRate = Number(Array.isArray(rates) ? rates[0] || 0 : rates || 0);
       return `<tr><td><strong>${esc(tierNames[tierId] || tierId)}</strong></td><td>${directRate}%</td></tr>`;
     }).join("");
-    const versions = state.commissionRuleVersions.map(rule => `<tr><td><strong>${esc(rule.name)}</strong><small>${esc(rule.id)}</small></td><td>${esc(rule.effectiveAt || "—")}</td><td>${esc(rule.scope || "全场商品")}</td><td>${status(rule.status)}</td><td>${esc(rule.note || "—")}</td><td><button class="text-action" data-action="rule-detail" data-id="${esc(rule.id)}">快照</button></td></tr>`).join("");
-    const tiersRows = [...state.distributionTiers].sort((a, b) => Number(a.sort) - Number(b.sort)).map(tier => {
+    const versionFilters = filtersFor("rule-versions");
+    const versionItems = state.commissionRuleVersions.filter(rule =>
+      (!versionFilters.status || rule.status === versionFilters.status) &&
+      matchesQuery(versionFilters.query, [rule.name, rule.id, rule.effectiveAt, rule.scope, rule.note])
+    );
+    const versions = pagedTable(versionItems, "rule-versions", ["规则名称 / 版本", "生效时间", "适用范围", "状态", "备注", "操作"], rule => `<tr><td><strong>${esc(rule.name)}</strong><small>${esc(rule.id)}</small></td><td>${esc(rule.effectiveAt || "—")}</td><td>${esc(rule.scope || "全场商品")}</td><td>${status(rule.status)}</td><td>${esc(rule.note || "—")}</td><td><button class="text-action" data-action="rule-detail" data-id="${esc(rule.id)}">快照</button></td></tr>`);
+    const tierFilters = filtersFor("tier-rules");
+    const tierItems = [...state.distributionTiers].sort((a, b) => Number(a.sort) - Number(b.sort)).filter(tier =>
+      (!tierFilters.status || tier.status === tierFilters.status) &&
+      matchesQuery(tierFilters.query, [tier.name, tier.id, tier.period, tier.combination, ...(tier.conditions || []).map(row => `${row.metric} ${row.op} ${row.value}`)])
+    );
+    const tiersRows = pagedTable(tierItems, "tier-rules", ["等级", "命中条件", "组合关系", "统计周期", "状态"], tier => {
       const conditions = (tier.conditions || []).map(row => `${row.metric} ${row.op} ${row.value}`).join(tier.combination === "OR" ? " 或 " : " 且 ");
       return `<tr><td><strong>${esc(tier.name)}</strong><small>${esc(tier.id)}</small></td><td>${esc(conditions || "无升级条件")}</td><td>${esc(tier.combination || "AND")}</td><td>${esc(tier.period || "近90日")}</td><td>${status(tier.status)}</td></tr>`;
-    }).join("");
+    });
     const actions = `<button class="admin-btn" data-action="tier-evaluate">立即评估等级</button><button class="admin-btn" data-action="edit-tier-rules">编辑等级规则</button><button class="admin-btn primary" data-action="edit-commission-rules">发布新佣金版本</button>`;
     const body = `<div class="dist-admin-note">佣金仅按直接推荐关系计算，比例按推广员等级配置；订单以商品实付净额（扣退款、不含运费）固化基数、比例和规则版本。以下演示参数不是已确认的商业政策。</div>
       <div class="dist-admin-grid">
         ${panel("当前直推佣金比例", table(["推广员等级", "直接推荐"], matrixRows), `${esc(current.id || "未发布")} · ${esc(current.effectiveAt || "")}`)}
         ${panel("结算与提现参数", `<div class="panel-body"><div class="dist-admin-kpi"><div><span>佣金推荐层级</span><strong>直接推荐</strong></div><div><span>收货冻结期</span><strong>${state.distributionSettings.freezeDays} 天</strong></div><div><span>最低提现</span><strong>${money(state.distributionSettings.minimumPayout)}</strong></div><div><span>单笔上限</span><strong>${money(state.distributionSettings.singlePayoutLimit)}</strong></div><div><span>日累计上限</span><strong>${money(state.distributionSettings.dailyPayoutLimit)}</strong></div><div><span>小额自动审核</span><strong>${money(state.distributionSettings.autoReviewThreshold)}</strong></div></div><div style="margin-top:12px"><button class="admin-btn" data-action="edit-distribution-settings">调整演示参数</button></div></div>`, "均待运营 / 财务确认")}
       </div>
-      <div style="margin-top:14px">${panel("等级评估规则", table(["等级", "命中条件", "组合关系", "统计周期", "状态"], tiersRows), `当前版本 ${esc(state.tierRuleVersion || "未发布")} · 周期任务保存输入指标、规则版本、结果与原因`)}</div>
-      <div style="margin-top:14px">${panel("佣金规则版本", table(["规则名称 / 版本", "生效时间", "适用范围", "状态", "备注", "操作"], versions), "版本发布不修改历史订单")}</div>`;
+      <div style="margin-top:14px">${filterBar("tier-rules", "等级 / 条件 / 周期", { statuses: distinctOptions(state.distributionTiers, item => item.status) })}
+        ${panel("等级评估规则", tiersRows, `当前版本 ${esc(state.tierRuleVersion || "未发布")} · ${tierItems.length} 条匹配规则`)}</div>
+      <div style="margin-top:14px">${filterBar("rule-versions", "版本名称 / 编号 / 适用范围 / 备注", { statuses: distinctOptions(state.commissionRuleVersions, item => item.status) })}
+        ${panel("佣金规则版本", versions, `${versionItems.length} 条匹配版本 · 发布不修改历史订单`)}</div>`;
     page("等级与佣金规则", "配置推广员等级评估与按等级区分的直推佣金政策。", body, actions);
   }
 
   function renderLedger() {
     state = read();
-    const q = searchText.toLowerCase();
-    const rows = state.commissionLedger.filter(item => !q || `${item.id} ${item.userId} ${item.orderId || ""} ${item.commissionId || ""} ${item.type}`.toLowerCase().includes(q)).map(item => {
+    const filters = filtersFor("ledger");
+    const items = state.commissionLedger.filter(item => {
+      const commission = state.commissions.find(row => row.id === item.commissionId);
+      return (!filters.status || (commission?.status || item.direction) === filters.status) &&
+        (!filters.type || item.type === filters.type) &&
+        matchesQuery(filters.query, [item.id, item.userId, name(item.userId), item.orderId, item.withdrawalId, item.commissionId, item.type, item.note, item.ruleVersion]);
+    });
+    const rows = pagedTable(items, "ledger", ["流水 / 时间", "业务类型 / 说明", "推广员", "业务关联", "层级 / 规则版本", "金额", "当前状态", "追溯"], item => {
       const commission = state.commissions.find(row => row.id === item.commissionId);
       const direction = item.direction === "debit" ? "−" : item.direction === "memo" ? "备忘" : "+";
       return `<tr><td><strong>${esc(item.id)}</strong><small>${esc(item.createdAt || "")}</small></td><td>${esc(item.type)}<small>${esc(item.note || "")}</small></td><td><strong>${esc(name(item.userId))}</strong><small>${esc(item.userId)}</small></td><td>${esc(item.orderId || item.withdrawalId || "—")}<small>${esc(item.commissionId || "")}</small></td><td>${item.level ? `${Number(item.level)} 级` : "—"}<small>${esc(item.ruleVersion || "")}</small></td><td><strong>${direction}${money(item.amount)}</strong></td><td>${status(commission?.status || item.direction)}</td><td class="nowrap"><button class="text-action" data-action="ledger-trace" data-id="${esc(item.id)}">解释链路</button></td></tr>`;
-    }).join("");
-    const body = `<div class="filters"><label class="admin-search"><input id="ledger-search" type="search" value="${esc(searchText)}" placeholder="流水号 / 用户 / 订单 / 佣金号"></label><span class="inline-help">金额为正负向追加明细；余额仅作为可重建投影，不直接覆盖。</span></div>
-      <div style="margin-top:12px">${panel("佣金账本流水", table(["流水 / 时间", "业务类型 / 说明", "推广员", "业务关联", "层级 / 规则版本", "金额", "当前状态", "追溯"], rows), `${state.commissionLedger.length} 笔明细`)}</div>
-      <div style="margin-top:14px">${panel("订单佣金快照", table(["佣金编号", "订单", "推广员", "基数", "费率 / 等级", "规则版本", "状态", "退款冲减"], state.commissions.map(item => `<tr><td>${esc(item.id)}</td><td>${esc(item.orderId)}</td><td>${esc(name(item.userId))}<small>${Number(item.level || 1)} 级</small></td><td>${money(item.basis || 0)}</td><td>${Number(item.rate || 0)}%<small>${esc(item.tierId || "历史等级")}</small></td><td>${esc(item.ruleVersion || "legacy")}</td><td>${status(item.status)}</td><td>${money(item.refundedAmount || 0)}${Number(item.recoverableAmount || 0) ? `<small>待人工 ${money(item.recoverableAmount)}</small>` : ""}</td></tr>`).join("")), "下单时固化，退款时追加冲正")}</div>`;
-    page("佣金账本", "逐笔解释待结算、冻结、释放、提现锁定、出款和退款调整。", body, `<button class="admin-btn" data-action="release-matured">运行到期释放任务</button>`);
-    root.querySelector("#ledger-search")?.addEventListener("input", event => {
-      searchText = event.target.value;
-      const cursor = searchText.length;
-      renderLedger();
-      const input = root.querySelector("#ledger-search");
-      input?.focus();
-      input?.setSelectionRange(cursor, cursor);
     });
+    const snapshotFilters = filtersFor("commissions");
+    const snapshots = state.commissions.filter(item =>
+      (!snapshotFilters.status || item.status === snapshotFilters.status) &&
+      matchesQuery(snapshotFilters.query, [item.id, item.orderId, item.userId, name(item.userId), item.ruleVersion, item.tierId])
+    );
+    const snapshotRows = pagedTable(snapshots, "commissions", ["佣金编号", "订单", "推广员", "基数", "费率 / 等级", "规则版本", "状态", "退款冲减"], item => `<tr><td>${esc(item.id)}</td><td>${esc(item.orderId)}</td><td>${esc(name(item.userId))}<small>${Number(item.level || 1)} 级</small></td><td>${money(item.basis || 0)}</td><td>${Number(item.rate || 0)}%<small>${esc(item.tierId || "历史等级")}</small></td><td>${esc(item.ruleVersion || "legacy")}</td><td>${status(item.status)}</td><td>${money(item.refundedAmount || 0)}${Number(item.recoverableAmount || 0) ? `<small>待人工 ${money(item.recoverableAmount)}</small>` : ""}</td></tr>`);
+    const body = `${filterBar("ledger", "流水号 / 用户 / 订单 / 佣金号", { statuses: distinctOptions([...state.commissions.map(item => ({ status: item.status })), ...state.commissionLedger.map(item => ({ status: item.direction }))], item => item.status), types: distinctOptions(state.commissionLedger, item => item.type), note: "金额为正负向追加明细；余额仅作为可重建投影，不直接覆盖。" })}
+      <div style="margin-top:12px">${panel("佣金账本流水", rows, `${items.length} 笔匹配明细`)}</div>
+      <div style="margin-top:14px">${filterBar("commissions", "佣金号 / 订单 / 推广员 / 规则版本", { statuses: distinctOptions(state.commissions, item => item.status) })}
+        ${panel("订单佣金快照", snapshotRows, `${snapshots.length} 条匹配快照 · 下单时固化，退款时追加冲正`)}</div>`;
+    page("佣金账本", "逐笔解释待结算、冻结、释放、提现锁定、出款和退款调整。", body, `<button class="admin-btn" data-action="release-matured">运行到期释放任务</button>`);
   }
 
   function payoutAction(item) {
@@ -216,41 +284,62 @@
 
   function renderPayouts() {
     state = read();
-    const rows = state.withdrawals.map(item => {
+    const filters = filtersFor("payouts");
+    const items = state.withdrawals.filter(item => {
+      const person = user(item.userId);
+      return (!filters.status || item.status === filters.status) &&
+        (!filters.type || item.channelType === filters.type || item.channelLabel === filters.type || item.account === filters.type) &&
+        matchesQuery(filters.query, [item.id, item.userId, person?.name, person?.phone, item.channelType, item.channelLabel, item.account, item.maskedAccount, item.reviewNote, item.outcomeNote]);
+    });
+    const rows = pagedTable(items, "payouts", ["提现单 / 时间", "推广员", "金额 / 收款渠道", "状态 / 说明", "审核记录", "出款尝试", "操作"], item => {
       const person = user(item.userId);
       const channel = item.channelLabel || item.account || "—";
       const attempts = state.payoutAttempts.filter(row => row.withdrawalId === item.id);
       return `<tr><td><strong>${esc(item.id)}</strong><small>${esc(item.createdAt || "")}</small></td><td><strong>${esc(person?.name || item.userId)}</strong><small>${esc(item.userId)} · ${esc(person?.phone || "")}</small></td><td><strong>${money(item.amount)}</strong><small>${esc(channel)} · ${esc(item.maskedAccount || "")}</small></td><td>${status(item.status)}<small>${esc(item.reviewNote || item.outcomeNote || "")}</small></td><td>${esc(item.reviewer || "—")}<small>${esc(item.reviewedAt || "")}</small></td><td>${attempts.length ? attempts.map(attempt => `<small>${esc(attempt.id)} · ${esc(statusNames[attempt.status] || attempt.status)}${attempt.providerRef ? ` · ${esc(attempt.providerRef)}` : ""}</small>`).join("") : "—"}</td><td class="nowrap">${payoutAction(item)}</td></tr>`;
-    }).join("");
+    });
     const amountLocked = state.withdrawals.filter(item => ["submitted", "reviewing", "approved", "paying"].includes(item.status)).reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const body = `<div class="dist-admin-note">批准不等于到账。审核、发起出款、确认成功/失败是独立状态；银行转账成功必须登记凭证。超时未知结果需先查单/对账，禁止盲目重复出款。</div>
       <div class="stats-row">${stat("申请总量", state.withdrawals.length, "包含全部状态")}${stat("锁定金额", money(amountLocked), "提交至出款终态前保留")}${stat("人工审核", state.withdrawals.filter(item => ["submitted", "reviewing"].includes(item.status)).length, "大额或风险申请")}${stat("出款处理中", state.withdrawals.filter(item => item.status === "paying").length, "等待通道结果/财务登记")}</div>
-      ${panel("提现申请与出款", table(["提现单 / 时间", "推广员", "金额 / 收款渠道", "状态 / 说明", "审核记录", "出款尝试", "操作"], rows), "双通道：微信商户出款 / 人工银行转账")}`;
+      ${filterBar("payouts", "提现单 / 推广员 / 手机 / 收款渠道", { statuses: distinctOptions(state.withdrawals, item => item.status), types: distinctOptions(state.withdrawals, item => item.channelType || item.channelLabel || item.account, value => statusNames[value] || value) })}
+      <div style="margin-top:12px">${panel("提现申请与出款", rows, `${items.length} 条匹配申请 · 双通道：微信商户出款 / 人工银行转账`)}</div>`;
     page("提现与出款", "按审核、出款、成功或失败释放的显式状态机处理提现，不把审核通过展示为已打款。", body);
   }
 
   function renderRisk() {
     state = read();
-    const rows = state.distributionRiskCases.map(item => {
+    const filters = filtersFor("risk");
+    const items = state.distributionRiskCases.filter(item =>
+      (!filters.status || item.status === filters.status) &&
+      (!filters.type || item.type === filters.type) &&
+      matchesQuery(filters.query, [item.id, item.userId, name(item.userId), item.type, item.level, item.summary, item.source, item.resolution])
+    );
+    const rows = pagedTable(items, "risk", ["异常编号", "推广员", "风险类型", "触发说明", "状态", "处理"], item => {
       const promoter = profile(item.userId);
       const actions = item.status === "reviewing"
         ? `<button class="text-action" data-action="risk-resolve" data-id="${esc(item.id)}" data-decision="normal">核验通过</button><button class="text-action danger" data-action="risk-resolve" data-id="${esc(item.id)}" data-decision="frozen">冻结资格</button>`
         : `<button class="text-action" data-action="risk-detail" data-id="${esc(item.id)}">处置记录</button>`;
       return `<tr><td><strong>${esc(item.id)}</strong><small>${esc(item.createdAt || "")}</small></td><td><strong>${esc(name(item.userId))}</strong><small>${esc(item.userId)} · 当前 ${esc(statusNames[promoter?.riskStatus] || promoter?.riskStatus || "正常")}</small></td><td><span class="dist-risk-badge">${esc(statusNames[item.type] || item.type)}</span><small>级别 ${esc(item.level || "medium")}</small></td><td>${esc(item.summary || "—")}<small>规则 ${esc(item.source || "manual")}</small></td><td>${status(item.status)}</td><td class="nowrap">${actions}</td></tr>`;
-    }).join("");
+    });
     const body = `<div class="dist-admin-note">风控命中仅进入人工核验，不自动扣减或生成负佣金。处置需记录理由；冻结会阻止新归因和提现，历史资金仍走账本与财务复核。</div>
-      ${panel("异常与人工复核", table(["异常编号", "推广员", "风险类型", "触发说明", "状态", "处理"], rows), `${state.distributionRiskCases.filter(item => item.status === "reviewing").length} 项待处理`)}`;
+      ${filterBar("risk", "工单 / 推广员 / 异常说明 / 规则", { statuses: distinctOptions(state.distributionRiskCases, item => item.status), types: distinctOptions(state.distributionRiskCases, item => item.type) })}
+      <div style="margin-top:12px">${panel("异常与人工复核", rows, `${items.length} 条匹配记录 · ${state.distributionRiskCases.filter(item => item.status === "reviewing").length} 项待处理`)}</div>`;
     page("风控异常", "复核自购刷单、批量注册、异常高频、退款套利、关系循环和提现异常。", body);
   }
 
   function renderAudit() {
     state = read();
-    const rows = state.distributionAudit.map(item => {
+    const filters = filtersFor("audit");
+    const items = state.distributionAudit.filter(item =>
+      (!filters.type || item.action === filters.type) &&
+      matchesQuery(filters.query, [item.id, item.createdAt, item.action, item.actor, item.targetId, item.reason, JSON.stringify(item.before || ""), JSON.stringify(item.after || "")])
+    );
+    const rows = pagedTable(items, "audit", ["时间 / 事件号", "操作", "操作者", "目标", "业务理由", "前后值"], item => {
       const before = item.before ? JSON.stringify(item.before) : "—";
       const after = item.after ? JSON.stringify(item.after) : "—";
       return `<tr><td><strong>${esc(item.createdAt || "")}</strong><small>${esc(item.id)}</small></td><td>${esc(item.action)}</td><td>${esc(item.actor || "—")}</td><td>${esc(item.targetId || "—")}</td><td>${esc(item.reason || "—")}</td><td class="dist-audit-detail">前：${esc(before)}<br>后：${esc(after)}</td></tr>`;
-    }).join("");
-    const body = `${panel("敏感操作审计", table(["时间 / 事件号", "操作", "操作者", "目标", "业务理由", "前后值"], rows), `${state.distributionAudit.length} 条不可覆盖记录`)}
+    });
+    const body = `${filterBar("audit", "事件 / 操作 / 操作者 / 目标 / 理由", { types: distinctOptions(state.distributionAudit, item => item.action) })}
+      <div style="margin-top:12px">${panel("敏感操作审计", rows, `${items.length} 条匹配记录 · 全部 ${state.distributionAudit.length} 条不可覆盖记录`)}</div>
       <p class="inline-help" style="margin-top:10px">正式环境应由 audit 模块存储不可随意修改的审计日志，并实施权限控制、敏感字段脱敏和留存策略。此原型仅使用浏览器演示数据。</p>`;
     page("操作审计", "查询推广资格、关系更正、规则发布、佣金调账、提现出款和风控处置的操作者与前后值。", body);
   }
@@ -462,6 +551,12 @@
     const button = event.target.closest("[data-action]");
     if (!button) return;
     const { action, id } = button.dataset;
+    if (action === "admin-page") {
+      const listId = button.dataset.list;
+      listPages[listId] = Number(button.dataset.page) || 1;
+      renderList(listId);
+      return;
+    }
     try {
       if (action === "review-application") applicationReview(id, button.dataset.decision);
       else if (action === "application-detail") {
@@ -525,6 +620,29 @@
     } catch (error) {
       toast(error.message || "操作失败");
     }
+  });
+
+  function updateListFilter(event) {
+    const control = event.target.closest("[data-admin-filter]");
+    if (!control) return;
+    const { list: listId, filterField } = control.dataset;
+    filtersFor(listId)[filterField] = control.value;
+    listPages[listId] = 1;
+    const cursor = filterField === "query" ? control.selectionStart : null;
+    renderList(listId);
+    const replacement = [...root.querySelectorAll("[data-admin-filter]")].find(item =>
+      item.dataset.list === listId && item.dataset.filterField === filterField
+    );
+    replacement?.focus();
+    if (cursor !== null && typeof replacement?.setSelectionRange === "function") {
+      replacement.setSelectionRange(cursor, cursor);
+    }
+  }
+  root.addEventListener("input", event => {
+    if (event.target.matches('input[data-admin-filter]')) updateListFilter(event);
+  });
+  root.addEventListener("change", event => {
+    if (event.target.matches('select[data-admin-filter]')) updateListFilter(event);
   });
 
   window.addEventListener("storage", event => { if (event.key === window.MallData.KEY) render(); });
